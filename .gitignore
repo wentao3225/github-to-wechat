@@ -1,0 +1,36 @@
+# ===== 密钥与本地配置（最重要，别把自己 key 传上去）=====
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets.*
+credentials*
+
+# ===== 运行时产物 =====
+# 文章产出在 D:\桌面\Files\improve\GithubOfShare\articles，不在这个目录，
+# 这里防的是临时在本目录跑测试时留下的文件。
+output/
+tmp/
+*.log
+*.tmp
+*.bak
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# ===== Node =====
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# ===== 编辑器 / 系统 =====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
