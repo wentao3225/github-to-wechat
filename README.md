@@ -27,25 +27,33 @@ git clone https://github.com/wentao3225/github-to-wechat.git \
 
 ```bash
 # Python：markdown + beautifulsoup4（md2wechat.py 用）
-python -m venv ~/.workbuddy/binaries/python/envs/default
-~/.workbuddy/binaries/python/envs/default/Scripts/pip install markdown beautifulsoup4
+pip install markdown beautifulsoup4
 
 # Node：sharp（svg2png.js 用）
-cd ~/.workbuddy/binaries/node/workspace && npm install sharp
+cd ~/.workbuddy/skills/github-to-wechat && npm install sharp
 ```
 
-### 3. 配置生图后端（可选）
+### 3. 配置（可选）
 
-封面默认用内置生图模型。想走 Agnes（当前免费）就配一下：
+**全部变量都可选**，不配就用默认值，开箱即用。只有在默认值不合用时才需要配：
 
 ```bash
 cp .env.example .env
-# 编辑 .env，把 IMAGE_API_KEY 的 sk-xxxx 换成真 key
 ```
 
-key 从 https://platform.agnes-ai.cn 控制台 → API Key 管理 获取。
+| 变量 | 默认值 | 什么时候需要配 |
+| --- | --- | --- |
+| `IMAGE_API_KEY` | 空（用工具内置生图） | 想走 Agnes 生图（当前免费）时配 |
+| `IMAGE_MODEL` | `agnes-image-2.5-flash` | 想换图片模型时 |
+| `PYTHON_BIN` | `python3` | 默认 python 没装 markdown/bs4，或装在隔离环境时 |
+| `NODE_BIN` | `node` | node 不在 PATH 时 |
+| `NODE_MODULES` | 空（用 `<SKILL_DIR>/node_modules`） | `sharp` 装在非标准位置时 |
+| `WECHAT_ARTICLES_DIR` | **当前工作区**下的 `articles/` | 想固定存到某个目录时 |
+| `HUMANIZER_SKILL` | 空（跳过去 AI 味步骤） | 想接 humanizer 去 AI 味时 |
 
-> `.env` 含密钥，已被 `.gitignore` 忽略，不会提交。
+Agnes 的 key 从 https://platform.agnes-ai.cn 控制台 → API Key 管理 获取。
+
+> `.env` 含密钥和本机路径，已被 `.gitignore` 忽略，不会提交。
 
 ### 4. 用
 
@@ -58,24 +66,27 @@ key 从 https://platform.agnes-ai.cn 控制台 → API Key 管理 获取。
 
 ---
 
-## 换机器后必改的路径
+## 文章输出到哪
 
-`SKILL.md` 里硬编码了本机绝对路径，克隆到新环境后**必须全局替换**，否则脚本找不到运行时：
+三级优先，**前者覆盖后者**：
 
-| 位置 | 内容 | 改成 |
-| --- | --- | --- |
-| `SKILL.md:18` / `:91` | skill 安装路径 | 你实际的 skill 目录 |
-| `SKILL.md:32` | 文章产物目录 | 你想存文章的地方 |
-| `SKILL.md:73` | humanizer 的 SKILL.md | 你本地 humanizer 的路径，没有就删掉第 5 步 |
-| `SKILL.md:83-88` | python / node 可执行文件路径 | 你实际的运行时路径 |
-| `references/image-backends.md:42,58` | 同上 | 同上 |
-| `scripts/svg2png.js:14` | NODE_PATH 注释 | 你的 node_modules 位置 |
+1. 会话里明确指定的路径
+2. `.env` 里的 `WECHAT_ARTICLES_DIR`
+3. 当前工作区下的 `articles/`
 
-Windows 上可以用这条命令批量查哪些地方还留着旧路径：
+默认值是「当前工作区」而不是写死某个目录 —— 这样在任何工作区调用都能跑，
+不会因为你没建过某个固定路径就报错。想固定位置就配 `WECHAT_ARTICLES_DIR`。
 
-```bash
-grep -rn "25626" --include="*.md" --include="*.py" --include="*.js" .
-```
+## 设计说明：路径是怎么处理的
+
+仓库里**没有任何硬编码的绝对路径**，`SKILL.md` 里出现的 `<SKILL_DIR>`、`<PYTHON_BIN>`
+这类占位符，运行时才从「会话指定 → `.env` → 默认值」解析。
+
+这样做的原因：skill 要开源，写死 `/Users/xxx/...` 对别人毫无意义，还会泄露本机信息。
+代价是首次使用可能要配一下 `.env`，换来的是 clone 下来就能跑。
+
+`svg2png.js` 找 `sharp` 也是两条路：优先 `<SKILL_DIR>/node_modules`（`npm install sharp`），
+找不到再读 `.env` 的 `NODE_MODULES`。命令行不需要设 `NODE_PATH`。
 
 ---
 

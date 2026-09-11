@@ -10,12 +10,29 @@
  * 1080 not 750: WeChat recompresses uploads, so starting larger keeps text crisp.
  * density=288 = 4x oversampling of a 680-wide viewBox, smooths text edges.
  *
- * Requires NODE_PATH to point at the managed workspace that has sharp:
- *   NODE_PATH=C:/Users/25626/.workbuddy/binaries/node/workspace/node_modules
+ * Requires `sharp`, resolved via the script's own location:
+ *   cd <SKILL_DIR> && npm install sharp
+ * No NODE_PATH needed — Node resolves modules relative to this script,
+ * so <SKILL_DIR>/node_modules/sharp is found automatically.
  */
-const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
+
+// sharp lookup, two ways (no NODE_PATH needed on the command line):
+//   1. <SKILL_DIR>/node_modules  — default, via `cd <SKILL_DIR> && npm install sharp`
+//   2. NODE_MODULES from .env    — for runtimes installed in an isolated workspace
+const envNodeModules = (() => {
+  try {
+    const text = fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8');
+    const m = text.match(/^\s*NODE_MODULES\s*=\s*(.+?)\s*$/m);
+    return m ? m[1].replace(/^["']|["']$/g, '') : null;
+  } catch (e) {
+    return null;
+  }
+})();
+if (envNodeModules) module.paths.push(envNodeModules);
+
+const sharp = require('sharp');
 
 const args = process.argv.slice(2);
 if (args.length < 1) {

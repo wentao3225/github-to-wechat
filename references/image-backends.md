@@ -39,7 +39,7 @@ cp .env.example .env      # Windows CMD: copy .env.example .env
 
 优先级：命令行参数 > 系统环境变量 > `.env`。
 
-<skill> = `C:\Users\25626\.workbuddy\skills\github-to-wechat`
+`<SKILL_DIR>` = 本 skill 的安装目录（默认 `~/.workbuddy/skills/github-to-wechat`）
 
 备选（想全局生效再用）：
 ```bash
@@ -55,10 +55,10 @@ setx IMAGE_MODEL "agnes-image-2.5-flash"
 配好后生成封面：
 
 ```bash
-"C:/Users/25626/.workbuddy/binaries/python/envs/default/Scripts/python.exe" \
-  "<skill>/scripts/gen_cover.py" \
+cd "<本期目录>"
+"<PYTHON_BIN>" "<SKILL_DIR>/scripts/gen_cover.py" \
   --prompt "<封面 prompt，参考 cover-prompt.md>" \
-  --out images/cover.png --no-proxy
+  --out images/cover.png
 ```
 
 `--no-proxy` 是给本地代理（Clash 等）没开的情况用的，和 agnes-video 一样的坑。

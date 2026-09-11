@@ -15,7 +15,7 @@ agent_created: true
 用户级 skill，装在这里：
 
 ```
-C:\Users\25626\.workbuddy\skills\github-to-wechat
+<SKILL_DIR>
 ```
 
 三种触发方式都行：
@@ -27,12 +27,35 @@ C:\Users\25626\.workbuddy\skills\github-to-wechat
 **为什么必须放用户级**：项目级 `.workbuddy/skills/` 下的 skill 不会被 Skill 工具自动发现，
 `/github-to-wechat` 会报 not found（2026-09-10 实测）。要命令可用就只能放用户级。
 
+## 本机配置（占位符怎么取值）
+
+下面所有 `<XXX>` 都是占位符，按这个顺序取值，**前者优先**：
+
+1. 用户在会话里明确说的路径
+2. skill 根目录 `.env` 里的同名变量（`.env` 不进 git，模板见 `.env.example`）
+3. 下表的默认值
+
+| 占位符 | .env 变量 | 默认值 | 什么时候才需要配 |
+| --- | --- | --- | --- |
+| `<SKILL_DIR>` | — | 本文件所在目录 | 不用配 |
+| `<ARTICLES_DIR>` | `WECHAT_ARTICLES_DIR` | **当前工作区**下的 `articles/` | 想固定存到某个目录时配 |
+| `<PYTHON_BIN>` | `PYTHON_BIN` | `python3` | 默认 python 没装 markdown/bs4 时配 |
+| `<NODE_BIN>` | `NODE_BIN` | `node` | node 不在 PATH 时配 |
+| `<HUMANIZER_SKILL>` | `HUMANIZER_SKILL` | 空（跳过第 5 步） | 想接 humanizer 去 AI 味时配 |
+
+> 默认用 `python3` / `node` 是为了让开源版本开箱即用。
+> 如果你的运行时装在非标准位置（比如隔离环境），在 `.env` 里写绝对路径即可。
+
 ## 产物目录
 
-固定：`D:\桌面\Files\improve\GithubOfShare\articles`
+`<ARTICLES_DIR>`，本期目录为 `<ARTICLES_DIR>/YYYY-MM-DD-<repo-name>/`。
 
-跟 skill 存放位置无关，是这里写死的。本期目录为 `articles/YYYY-MM-DD-<repo-name>/`。
-要临时输出到别处，在会话里直接说路径。
+**只在不确定时问用户**，判断顺序：
+
+1. 用户这次说了路径 → 用它
+2. `.env` 里配了 `WECHAT_ARTICLES_DIR` → 用它，不打扰用户
+3. 都没有 → 用当前工作区下的 `articles/`，**开工前用一句话告知**「文章会输出到 X，要换地方随时说」，
+   不要弹选择题打断流程
 
 ## 三条硬规矩（违反就白干）
 
@@ -69,9 +92,13 @@ C:\Users\25626\.workbuddy\skills\github-to-wechat
 按 `references/style-guide.md` 的文风和结构模板写 Markdown，存为 `draft.md`。
 引用 README 的功能描述时**必须改写成自己的话**，原样照抄等于洗稿。
 
-### 5. 去 AI 味
-读取 `C:\Users\25626\.agents\skills\humanizer\SKILL.md`，按它的 §1–§19 规则改写 `draft.md`，产出 `final.md`。
-（这个 skill 装在 `~/.agents/` 而不是 WorkBuddy 的技能目录，跨生态不会被自动发现，所以直接按路径读文件。）
+### 5. 去 AI 味（可选步骤）
+
+**配了 `<HUMANIZER_SKILL>` 才做**：读取它，按 §1–§19 规则改写 `draft.md`，产出 `final.md`。
+**没配就跳过**，直接 `cp draft.md final.md` 往下走。
+
+（humanizer 通常装在 `~/.agents/skills/humanizer/SKILL.md`，跟 WorkBuddy 的技能目录不是一套，
+跨生态不会被自动发现，所以要在 `.env` 里按绝对路径配。）
 
 高频必查项：不是X而是Y / 一行式收尾段落 / 破折号滥用 / 三连排比 / `**标签：**` 加粗 / emoji 开头 / "赋能""助力""革命性"。
 
@@ -79,16 +106,18 @@ C:\Users\25626\.workbuddy\skills\github-to-wechat
 
 ### 6. 出稿
 ```bash
+cd "<本期目录>"
+
 # SVG -> PNG（必须；默认 1080 宽 / density 288）
-NODE_PATH="C:/Users/25626/.workbuddy/binaries/node/workspace/node_modules" \
-  "C:/Users/25626/.workbuddy/binaries/node/versions/22.22.2-2/node.exe" \
-  "<skill>/scripts/svg2png.js" "images"
+"<NODE_BIN>" "<SKILL_DIR>/scripts/svg2png.js" "images"
 
 # Markdown -> 微信 HTML
-"C:/Users/25626/.workbuddy/binaries/python/envs/default/Scripts/python.exe" \
-  "<skill>/scripts/md2wechat.py" "final.md" --theme "#3b82f6" --title "<标题>"
+"<PYTHON_BIN>" "<SKILL_DIR>/scripts/md2wechat.py" "final.md" \
+  --theme "#3b82f6" --title "<标题>"
 ```
-`<skill>` = `C:\Users\25626\.workbuddy\skills\github-to-wechat`
+
+> 不需要设 `NODE_PATH`。node 的模块解析基于脚本所在位置，
+> 只要 `sharp` 装在 `<SKILL_DIR>/node_modules` 就能找到。
 
 产出：`final.md`（存档）、`final.html`（浏览器打开 → 全选 → 粘贴到公众号编辑器）、`images/*.png`（手动上传）。
 
