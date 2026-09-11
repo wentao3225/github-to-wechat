@@ -18,9 +18,9 @@
 const fs = require('fs');
 const path = require('path');
 
-// sharp lookup, two ways (no NODE_PATH needed on the command line):
-//   1. <SKILL_DIR>/node_modules  — default, via `cd <SKILL_DIR> && npm install sharp`
-//   2. NODE_MODULES from .env    — for runtimes installed in an isolated workspace
+// Locate sharp. Two ways, and no NODE_PATH needed on the command line:
+//   1. <SKILL_DIR>/node_modules  — default, from `npm install sharp`
+//   2. NODE_MODULES in .env      — when sharp lives somewhere else
 const envNodeModules = (() => {
   try {
     const text = fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8');

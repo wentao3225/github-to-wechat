@@ -4,12 +4,12 @@
 Generic text-to-image against any OpenAI-compatible /v1/images/generations endpoint.
 
 Lets the github-to-wechat skill use an external image model (Agnes, or any
-OpenAI-compatible provider) instead of the built-in ImageGen tool.
+OpenAI-compatible provider) instead of the host tool's built-in generation.
 
 Config, later source wins:
-    1. skill 根目录下的 .env 文件（推荐，最省事）
-    2. 环境变量:  IMAGE_API_BASE / IMAGE_API_KEY / IMAGE_MODEL
-    3. CLI:       --base-url / --api-key / --model
+    1. .env in the skill root (recommended)
+    2. environment:  IMAGE_API_BASE / IMAGE_API_KEY / IMAGE_MODEL
+    3. CLI:          --base-url / --api-key / --model
 
 Response handling covers both common shapes:
     data[0].url      -> downloaded

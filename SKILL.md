@@ -2,7 +2,7 @@
 name: github-to-wechat
 description: |
   把一个 GitHub 仓库地址变成一篇可以直接发到微信公众号的文章：抓仓库信息、定选题角度、
-  生成配图（封面用生图模型、正文示意图用 SVG 转 PNG）、写初稿、用 humanizer 去 AI 味，
+  生成配图（封面用生图模型、正文示意图用 SVG 转 PNG）、写初稿、可选地去 AI 味，
   最后产出可一键复制的 HTML 和图片文件夹。
   触发词：这个仓库写一篇文章、发公众号、github 转公众号、写篇推文、成稿、出稿。
 agent_created: true
@@ -10,101 +10,134 @@ agent_created: true
 
 # GitHub 仓库 → 公众号文章
 
-## 调用方式
+输入一个 GitHub 仓库地址，输出一篇可发布的微信公众号文章：HTML 稿 + 配图文件夹。
 
-用户级 skill，装在这里：
+## 安装
+
+```bash
+SKILLS_DIR=~/.claude/skills     # 换成你的 skill 目录
+git clone <repo-url> "$SKILLS_DIR/github-to-wechat"
+cd "$SKILLS_DIR/github-to-wechat" && npm install sharp
+```
+
+Python 脚本只用标准库，不需要 pip install。细节见 `README.md`。
+
+**装在用户级 skill 目录**（`~/.claude/skills/`、`~/.workbuddy/skills/` 等，以工具文档为准），
+不要装项目级：部分工具的斜杠命令只从用户级加载，装项目级会导致命令找不到。
+
+## 调用
 
 ```
-<SKILL_DIR>
+/github-to-wechat https://github.com/owner/repo   # 带仓库地址
+/github-to-wechat                                  # 不带参数，会追问地址
 ```
 
-三种触发方式都行：
+自然语言触发也可以（「给这个仓库写篇公众号文章」）。
 
-1. `/github-to-wechat https://github.com/owner/repo` —— 斜杠命令带 URL，最直接
-2. `/github-to-wechat` 不带参数，我追问仓库地址
-3. 直接丢链接说「写篇公众号」，自然语言也能触发
+## 依赖
 
-**为什么必须放用户级**：项目级 `.workbuddy/skills/` 下的 skill 不会被 Skill 工具自动发现，
-`/github-to-wechat` 会报 not found（2026-09-10 实测）。要命令可用就只能放用户级。
+| 组件 | 依赖 | 说明 |
+| --- | --- | --- |
+| `md2wechat.py` | 无 | 纯标准库 |
+| `svg2png.js` | `sharp` | 装在 `<SKILL_DIR>/node_modules` |
+| `gen_cover.py` | 无 | 纯标准库，可选组件 |
 
-## 本机配置（占位符怎么取值）
+`sharp` 跨平台二进制无法随仓库分发，首次使用前需执行一次 `npm install sharp`。
+若未安装，`svg2png.js` 会报错提示。
 
-下面所有 `<XXX>` 都是占位符，按这个顺序取值，**前者优先**：
+## 配置
 
-1. 用户在会话里明确说的路径
-2. skill 根目录 `.env` 里的同名变量（`.env` 不进 git，模板见 `.env.example`）
+下面所有 `<XXX>` 都是占位符，按此顺序取值，**前者优先**：
+
+1. 用户在会话里明确指定的路径
+2. `<SKILL_DIR>/.env` 里的同名变量（`.env` 不进 git，模板见 `.env.example`）
 3. 下表的默认值
 
 | 占位符 | .env 变量 | 默认值 | 什么时候才需要配 |
 | --- | --- | --- | --- |
 | `<SKILL_DIR>` | — | 本文件所在目录 | 不用配 |
-| `<ARTICLES_DIR>` | `WECHAT_ARTICLES_DIR` | **当前工作区**下的 `articles/` | 想固定存到某个目录时配 |
-| `<PYTHON_BIN>` | `PYTHON_BIN` | `python3` | 默认 python 没装 markdown/bs4 时配 |
-| `<NODE_BIN>` | `NODE_BIN` | `node` | node 不在 PATH 时配 |
-| `<HUMANIZER_SKILL>` | `HUMANIZER_SKILL` | 空（跳过第 5 步） | 想接 humanizer 去 AI 味时配 |
+| `<ARTICLES_DIR>` | `WECHAT_ARTICLES_DIR` | 当前工作区下的 `articles/` | 想固定输出目录时 |
+| `<PYTHON_BIN>` | `PYTHON_BIN` | `python3` | 运行时不在 PATH 时 |
+| `<NODE_BIN>` | `NODE_BIN` | `node` | 运行时不在 PATH 时 |
+| `<NODE_MODULES>` | `NODE_MODULES` | `<SKILL_DIR>/node_modules` | `sharp` 装在别处时 |
+| `<HUMANIZER_SKILL>` | `HUMANIZER_SKILL` | 空（跳过第 5 步） | 需要去 AI 味时 |
 
-> 默认用 `python3` / `node` 是为了让开源版本开箱即用。
-> 如果你的运行时装在非标准位置（比如隔离环境），在 `.env` 里写绝对路径即可。
+默认值面向开箱即用。只在默认值不合用时才需要写 `.env`。
 
-## 产物目录
+## 输出目录
 
-`<ARTICLES_DIR>`，本期目录为 `<ARTICLES_DIR>/YYYY-MM-DD-<repo-name>/`。
+本期目录为 `<ARTICLES_DIR>/YYYY-MM-DD-<repo-name>/`。
 
-**只在不确定时问用户**，判断顺序：
+**不要为此弹选择题打断流程**，按序判断：
 
-1. 用户这次说了路径 → 用它
-2. `.env` 里配了 `WECHAT_ARTICLES_DIR` → 用它，不打扰用户
-3. 都没有 → 用当前工作区下的 `articles/`，**开工前用一句话告知**「文章会输出到 X，要换地方随时说」，
-   不要弹选择题打断流程
+1. 用户本次指定了路径 → 用它
+2. `.env` 配了 `WECHAT_ARTICLES_DIR` → 用它，不必询问
+3. 都没有 → 用当前工作区下的 `articles/`，开工前一句话告知输出位置即可
 
-## 三条硬规矩（违反就白干）
+## 三条硬性规则
 
-1. **SVG 必须转 PNG。** 公众号正文图片只收 jpg / png / gif，SVG 传不上去。任何画完的 SVG 都要走 `svg2png.js`，没有例外。
-2. **先去 AI 味，再套 HTML。** 顺序反过来，humanizer 会把 inline style 当正文一起改，样式会被改坏。流程固定为：Markdown 纯文本 → humanizer → HTML。
-3. **选题必须人工确认。** 定角度后先给用户看，他点头再往下写。AI 自己挑的选题没有信息增量。
+1. **SVG 必须转 PNG。** 公众号正文图片只接受 jpg / png / gif，SVG 无法上传。
+   任何生成的 SVG 都要经过 `svg2png.js`，没有例外。
+2. **先去 AI 味，再套 HTML。** 顺序颠倒时，改写工具会把 inline style 当正文一起改，
+   样式会被破坏。固定顺序：Markdown 纯文本 → 去 AI 味 → HTML。
+3. **选题必须人工确认。** 给出候选角度后等用户确认再动笔。自动挑选的选题缺少信息增量。
 
 ## 流程
 
 ### 1. 抓仓库信息
-拿到 URL 后先取真实数据，禁止凭印象写：
+
+拿到 URL 后先取真实数据，禁止凭印象编造：
+
 - `gh repo view <owner/repo> --json name,description,stargazerCount,language,updatedAt,license,url`
-- README 要点（用 WebFetch 抓 raw README，长的话只看前 200 行）
+- `gh` 不可用时走 GitHub API（`api.github.com/repos/<owner>/<repo>`）+ 抓取 raw README
 - 记下：star 数、语言、最近提交时间、许可证、一句话定位
 
-抓不到就直说，不要编 star 数和数据。
+抓不到就如实说明，不要编造 star 数和数据。
 
 ### 2. 定选题角度
-给用户 **3 个候选角度**让他选，每个角度一句话说清"读者看完能得到什么"。角度优先选：
+
+给用户 **3 个候选角度**，每个角度一句话说清「读者看完能得到什么」。优先选择：
+
 - 解决一个具体的、国内开发者真会遇到的痛点
-- 和某个主流方案的对比
+- 与某个主流方案的对比
 - 一个反常识的用法或坑
 
-避开「又一个 XX 工具」这种没有增量的角度。
+避开「又一个 XX 工具」这类没有信息增量的角度。
 
 ### 3. 生成配图
-- **封面**：生图模型，尺寸 900×383（2.35:1）。prompt 参考 `references/cover-prompt.md`。后端选择见 `references/image-backends.md`（默认内置生图，已配置 IMAGE_API_KEY 时走 `scripts/gen_cover.py`）。
-- **正文示意图**：手写 SVG（架构图 / 流程图 / 对比表），存到 `images/`，再用 `svg2png.js` 转 PNG。
-- **字号规范（血泪教训）**：SVG viewBox 宽 680 时，正文文字必须 20px 起、标题 22-26px、图注 18px、等宽路径 15px。低于 16px 转出来在手机上就是糊的。转 PNG 用 1080 宽 + density 288（脚本默认值），公众号会再压缩到 750 显示，等于超采样。
-- 每篇 3～5 张图。SVG 里所有 `rect`/`text` 必须显式写 `fill`，不能依赖 CSS class。
-- **文字垂直居中**：`<text>` 的 y 是基线不是中心。要放进高 h 的块里，y = 块y + h/2 + 4（20px 字号时 +7，15px 时 +5）。librsvg 对 `dominant-baseline` 支持不稳，直接算基线最可靠。
+
+- **封面**：生图模型，尺寸 900×383（2.35:1）。prompt 参考 `references/cover-prompt.md`，
+  后端选择见 `references/image-backends.md`。
+- **正文示意图**：手写 SVG（架构图 / 流程图 / 对比表），存入 `images/`，再用 `svg2png.js` 转 PNG。
+- **字号规范**：viewBox 宽 680 时，正文文字至少 20px，标题 22–26px，图注 18px，
+  等宽路径 15px。低于 16px 在手机上不可读。转 PNG 用 1080 宽 + density 288（脚本默认值），
+  公众号会再压缩到 750 显示，等于超采样。转换时脚本会对小于 14px 的字号发出警告。
+- 每篇 3–5 张图。SVG 里所有 `rect` / `text` 必须显式写 `fill`，不能依赖 CSS class。
+- **文字垂直居中**：`<text>` 的 `y` 是基线而非中心。要塞进高 `h` 的块中时取
+  `y = 块y + h/2 + 4`（20px 字号用 +7，15px 用 +5）。librsvg 对 `dominant-baseline`
+  支持不稳定，直接计算基线更可靠。
 
 ### 4. 写初稿
-按 `references/style-guide.md` 的文风和结构模板写 Markdown，存为 `draft.md`。
-引用 README 的功能描述时**必须改写成自己的话**，原样照抄等于洗稿。
 
-### 5. 去 AI 味（可选步骤）
+按 `references/style-guide.md` 的文风与结构模板写 Markdown，存为 `draft.md`。
 
-**配了 `<HUMANIZER_SKILL>` 才做**：读取它，按 §1–§19 规则改写 `draft.md`，产出 `final.md`。
-**没配就跳过**，直接 `cp draft.md final.md` 往下走。
+引用 README 的功能描述时**必须改写成自己的话**，原样照抄等同于洗稿。
 
-（humanizer 通常装在 `~/.agents/skills/humanizer/SKILL.md`，跟 WorkBuddy 的技能目录不是一套，
-跨生态不会被自动发现，所以要在 `.env` 里按绝对路径配。）
+### 5. 去 AI 味（可选）
 
-高频必查项：不是X而是Y / 一行式收尾段落 / 破折号滥用 / 三连排比 / `**标签：**` 加粗 / emoji 开头 / "赋能""助力""革命性"。
+**仅在配了 `<HUMANIZER_SKILL>` 时执行**：读取该文件，按其规则改写 `draft.md`，产出 `final.md`。
+**未配置则跳过**，直接 `cp draft.md final.md` 继续。
 
-保留 `final.md` 和 `draft.md` 两份，方便对比 humanizer 改了什么。
+`HUMANIZER_SKILL` 需要填绝对路径 —— 这类去 AI 味的 skill 通常装在别的目录树，
+不会被工具自动发现。
+
+高频检查项：`不是X而是Y` 结构 / 一行式收尾段落 / 破折号滥用 / 三连排比 /
+`**标签：**` 式加粗 / emoji 开头 / 「赋能」「助力」「革命性」。
+
+保留 `draft.md` 和 `final.md` 两份，便于对比改写差异。
 
 ### 6. 出稿
+
 ```bash
 cd "<本期目录>"
 
@@ -116,22 +149,26 @@ cd "<本期目录>"
   --theme "#3b82f6" --title "<标题>"
 ```
 
-> 不需要设 `NODE_PATH`。node 的模块解析基于脚本所在位置，
-> 只要 `sharp` 装在 `<SKILL_DIR>/node_modules` 就能找到。
+不需要设置 `NODE_PATH`：Node 按脚本自身位置解析模块，
+只要 `sharp` 在 `<SKILL_DIR>/node_modules` 就能找到（或由 `<NODE_MODULES>` 指定）。
 
-产出：`final.md`（存档）、`final.html`（浏览器打开 → 全选 → 粘贴到公众号编辑器）、`images/*.png`（手动上传）。
+产出：
 
-最后把标题、摘要（≤54 字）、用到的仓库写进 `<产物目录>/topics.md` 记账，避免重复选题。
+- `final.md` —— 存档
+- `final.html` —— 浏览器打开 → 全选 → 粘贴进公众号编辑器
+- `images/*.png` —— 手动上传到公众号
+
+最后把标题、摘要（≤54 字）、仓库名写入 `<ARTICLES_DIR>/topics.md` 台账，避免重复选题。
 
 ## 目录约定
 
 ```
-<产物目录>/2026-09-10-awesome-xx/
-├── draft.md        初稿（去味前）
-├── final.md        定稿（去味后，存档用）
-├── final.html      发布用，双击打开复制
+<ARTICLES_DIR>/2026-09-10-awesome-xx/
+├── draft.md        初稿（改写前）
+├── final.md        定稿（改写后，存档）
+├── final.html      发布用，浏览器打开复制
 └── images/
-    ├── cover.png   封面 900x383
-    ├── diagram.svg 源
+    ├── cover.png   封面 900×383
+    ├── diagram.svg SVG 源文件（便于修改）
     └── diagram.png 正文图 1080px
 ```
