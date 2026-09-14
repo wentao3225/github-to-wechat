@@ -12,39 +12,15 @@ agent_created: true
 
 输入一个 GitHub 仓库地址，输出一篇可发布的微信公众号文章：HTML 稿 + 配图文件夹。
 
-## 安装
-
-```bash
-SKILLS_DIR=~/.claude/skills     # 换成你的 skill 目录
-git clone <repo-url> "$SKILLS_DIR/github-to-wechat"
-```
-
-就这两行。Python 脚本只用标准库，不需要 pip install；`sharp` 由 `svg2png.js`
-首次运行时自动安装。细节见 `README.md`。
-
-**装在用户级 skill 目录**（`~/.claude/skills/`、`~/.workbuddy/skills/` 等，以工具文档为准），
-不要装项目级：部分工具的斜杠命令只从用户级加载，装项目级会导致命令找不到。
-
-## 调用
-
-```
-/github-to-wechat https://github.com/owner/repo   # 带仓库地址
-/github-to-wechat                                  # 不带参数，会追问地址
-```
-
-自然语言触发也可以（「给这个仓库写篇公众号文章」）。
+安装、配置、触发方式见 `README.md`，本文档只描述执行流程。
 
 ## 依赖
 
-| 组件 | 依赖 | 说明 |
-| --- | --- | --- |
-| `md2wechat.py` | 无 | 纯标准库 |
-| `svg2png.js` | `sharp` | 缺失时自动安装，见下 |
-| `gen_cover.py` | 无 | 纯标准库，可选组件 |
-
-`sharp` 的跨平台二进制无法随仓库分发，因此设计为首次运行 `svg2png.js` 时自动安装：
-检测到缺失就执行 `npm install` 装进 `<SKILL_DIR>/node_modules`，装完继续本次转换。
-跳过自动安装可加 `--no-install` 参数，或设环境变量 `NO_AUTO_INSTALL=1`。
+`md2wechat.py` 与 `gen_cover.py` 只用 Python 标准库，无需安装。
+`svg2png.js` 需要 `sharp`，已设计为首次运行时自动安装到 `<SKILL_DIR>/node_modules`，
+装完继续本次转换，无需人工介入，也不用设置 `NODE_PATH`。
+脚本报「找不到模块」时才需要排查依赖：加 `--no-install` 可跳过自动安装，
+或按 `README.md` 手动执行一次 `npm install`。正常的字号告警不是依赖问题。
 
 ## 配置
 
