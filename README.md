@@ -12,7 +12,7 @@
 - **Python 侧零依赖** —— `md2wechat.py`、`paths.py` 只用标准库，不需要 `pip install`
 - **无需配置即可运行** —— 所有配置项都有默认值，按需覆盖
 - **不写死绝对路径** —— 路径统一由 `scripts/paths.py` 解析，换机器不用改代码
-- **输出目录不随 cwd 漂移** —— 按 `.env` 固定解析，从哪个目录调起都落在同一个地方
+- **输出目录零配置** —— 就是工作区下的 `articles/`，没有开关要维护
 - **交付物不会缺图** —— 漏引用的正文图由出稿脚本自动补齐，不会退化成纯文字
 
 ## 环境要求
@@ -61,7 +61,6 @@ cp .env.example .env
 | `PYTHON_BIN` | `python3` | Python 不在 PATH 时 |
 | `NODE_BIN` | `node` | Node 不在 PATH 时 |
 | `NODE_MODULES` | `<SKILL_DIR>/node_modules` | `sharp` 装在别处时 |
-| `WECHAT_ARTICLES_DIR` | `~/articles` | 想固定输出目录时（**建议配**） |
 | `HUMANIZER_SKILL` | 空（跳过去 AI 味步骤） | 需要去 AI 味时 |
 
 `.env` 已被 `.gitignore` 忽略，不会提交。
@@ -90,26 +89,19 @@ cp .env.example .env
 
 ## 文章输出到哪
 
-**不要靠推导，跑脚本拿绝对路径：**
+**当前工作区根目录下的 `articles/`**，没有配置项：
 
 ```bash
 python scripts/paths.py show            # 所有路径 + 各自来源
-python scripts/paths.py issue CmdDo     # 建并打印 <输出目录>/2026-09-14-CmdDo
+python scripts/paths.py issue CmdDo     # 建并打印 articles/2026-09-14-CmdDo
 ```
 
-解析顺序，前者覆盖后者：
-
-1. 命令行参数 `--articles-dir`
-2. 环境变量 `WECHAT_ARTICLES_DIR`
-3. `.env` 中的 `WECHAT_ARTICLES_DIR`
-4. 默认 `~/articles`
-
-默认值是一个**固定位置**而不是「当前工作区」：skill 会被任意 agent 从任意 cwd 调起，
-用 cwd 推导会让同一篇文章落到不同地方（从家目录启动就写进 `~/articles`），
-而且所有脚本仍然报成功。想固定输出位置，在 `.env` 里写一行：
+skill 会被任意 agent 从任意工作区调起，「当前工作区」就是运行命令时所在的目录。
+换个工作区，产物就落在那个工作区 —— 在哪儿打开 agent，就写到哪儿。
+所以开工前确认一下工作区是你想写入的那个。
 
 ```
-WECHAT_ARTICLES_DIR=/path/to/articles
+<工作区>/articles/2026-09-14-CmdDo/
 ```
 
 ## 目录结构
@@ -182,12 +174,14 @@ github-to-wechat/
 
 **为什么路径用占位符？** skill 会被分发到不同机器，写死 `/home/xxx/...` 对别人没有意义，
 也会泄露本机信息。因此 `SKILL.md` 中使用 `<SKILL_DIR>`、`<PYTHON_BIN>` 这类占位符，
-运行时由 `scripts/paths.py` 按「命令行参数 → 环境变量 → `.env` → 默认值」解析。
+运行时由 `scripts/paths.py` 解析并打印绝对路径。
 
-**为什么输出目录必须过脚本？** 文档曾写「输出目录是当前工作区下的 `articles/`」，
-看着合理，实际会随调用方的 cwd 漂移：换个 agent 客户端、从家目录启动，
-文章就写进了 `~/articles`，而每个脚本都报成功。文档是建议，脚本是强制 ——
-现在所有路径统一由 `paths.py` 解析（按绝对路径读 `.env`，输出绝对路径），没有 cwd 参与。
+**为什么输出目录不做成配置项？** 它以前是：`.env` 里配 `WECHAT_ARTICLES_DIR`，
+再叠环境变量和命令行参数，一共四级优先级。结果这份配置在很长一段时间里
+**没有任何代码读它** —— 文档写了优先级，脚本却没实现，于是配好的目录被忽略，
+文章写进了别处，而所有脚本都报成功。一个只有一条规则的路径（工作区下的 `articles/`）
+比一条四级解析链更难用错。少一个开关，就少一类「配了没生效」的问题；
+真要换位置，换个工作区就行。
 
 **为什么漏引用的图要自动补，而不只是警告？** 同一个坑踩了三次：写进文档、打印告警，
 都不如让脚本直接动手。告警容易被刷过去，而且退出码仍是 0，调用方会当成成功 ——

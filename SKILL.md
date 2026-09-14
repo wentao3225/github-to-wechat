@@ -33,7 +33,6 @@ agent_created: true
 | 占位符 | .env 变量 | 默认值 | 什么时候才需要配 |
 | --- | --- | --- | --- |
 | `<SKILL_DIR>` | — | 本文件所在目录 | 不用配 |
-| `<ARTICLES_DIR>` | `WECHAT_ARTICLES_DIR` | `~/articles` | 想固定输出目录时 |
 | `<PYTHON_BIN>` | `PYTHON_BIN` | 当前解释器 | 运行时不在 PATH 时 |
 | `<NODE_BIN>` | `NODE_BIN` | `node` | 运行时不在 PATH 时 |
 | `<NODE_MODULES>` | `NODE_MODULES` | `<SKILL_DIR>/node_modules` | `sharp` 装在别处时 |
@@ -41,20 +40,21 @@ agent_created: true
 
 默认值面向开箱即用。只在默认值不合用时才需要写 `.env`。
 
-**路径类的值不要手工推导。** `scripts/paths.py` 会按同样的顺序（命令行参数 →
-环境变量 → `<SKILL_DIR>/.env` → 默认值）解析并打印绝对路径。用它，不要自己拼。
+**输出目录不在配置范围内**，见下一节。
+
+**路径类的值不要手工推导。** `scripts/paths.py` 会解析并打印绝对路径。用它，不要自己拼。
 
 > 运行时路径不要写死版本号。版本管理器升级后目录名会变（例如 node 的
 > `22.22.2-2` → `22.22.2-3`），写死的路径会静默失效。只有默认值不可用时才配。
 
-## 输出目录：只能问脚本，不要自己拼
+## 输出目录：当前工作区下的 articles/
 
-**不要用「当前工作区」「当前目录」推导任何路径，也不要手工拼 `<ARTICLES_DIR>`。**
-「当前工作区」对 skill 没有意义 —— skill 会被任意 agent 从任意 cwd 调起，
-从家目录启动时同样的文章会落进 `~/articles`，而不是 `.env` 里配的目录，
-而所有脚本仍然报成功。
+**输出目录固定为「当前工作区」根目录下的 `articles/`，不可配置。**
 
-开工第一件事，跑路径解析脚本（它按绝对路径读 `<SKILL_DIR>/.env`，与 cwd 无关）：
+skill 会被任意 agent 从任意工作区调起，所以「当前工作区」就是运行命令时所在的目录。
+换个工作区跑，产物就落在那个工作区 —— 这是预期行为，不是 bug。
+
+开工第一件事，跑路径解析脚本拿到本期目录（它顺便把目录建好）：
 
 ```bash
 "<PYTHON_BIN>" "<SKILL_DIR>/scripts/paths.py" show      # 所有路径 + 各自来源
@@ -62,16 +62,13 @@ ISSUE="$("<PYTHON_BIN>" "<SKILL_DIR>/scripts/paths.py" issue <repo-name>)"
 cd "$ISSUE"
 ```
 
-`issue` 打印 `<ARTICLES_DIR>/YYYY-MM-DD-<repo-name>/` 的绝对路径并建好目录。
+`issue` 打印 `<当前工作区>/articles/YYYY-MM-DD-<repo-name>/` 的绝对路径并建好目录。
 本期所有产出都落在这里，`$ISSUE` 就是它的绝对路径。
 
-优先级脚本已经处理好了，**不要为此弹选择题打断流程**：
-
-1. 用户本次指定了目录 → 传 `--articles-dir <路径>`
-2. `.env` 配了 `WECHAT_ARTICLES_DIR` → 脚本自己会读，不必询问
-3. 都没配 → 落到 `~/articles`，开工前一句话告知输出位置即可
-
-想换输出位置就改 `.env` 的 `WECHAT_ARTICLES_DIR`，不要改这段流程。
+**开工前确认当前工作区就是你要写入的那个。** 输出位置完全由运行目录决定：
+在 `C:\Users\25626` 打开 agent 跑，产物就落在 `C:\Users\25626\articles`；
+要写进某个项目的仓库，就先在那个工作区里打开 agent。
+用户没有明确要求时，**不要为此弹选择题打断流程**。
 
 ## 五条硬性规则
 
@@ -84,7 +81,8 @@ cd "$ISSUE"
    引用要在**写稿时按语义放好**，这是正路。第 6 步 `md2wechat.py` 会兜底：
    发现没被引用的图，按间距补进 `final.md` 并报 `FIX`。
    看到 `FIX` 说明写稿时漏了 —— 回去把图挪到真正对应的段落后面，别留着默认位置。
-5. **路径只来自 `paths.py`。** 不要用 cwd 推导 `<ARTICLES_DIR>`，不要手工拼本期目录。
+5. **路径只来自 `paths.py`。** 输出目录固定是「当前工作区/articles」，不可配置。
+   不要手工拼本期目录名，也不要另配输出路径。
    第 0 步跑 `paths.py issue <repo-name>`，用它打印出来的绝对路径。
 
 ## 流程
@@ -200,13 +198,13 @@ cd "$ISSUE"
 - `final.html` —— 浏览器打开 → 全选 → 粘贴进公众号编辑器
 - `images/*.png` —— 手动上传到公众号
 
-最后把标题、摘要（≤54 字）、仓库名**追加**到 `<ARTICLES_DIR>/topics.md`（`$ISSUE` 的上一级）。
+最后把标题、摘要（≤54 字）、仓库名**追加**到 `<当前工作区>/articles/topics.md`（`$ISSUE` 的上一级）。
 台账是追加不是覆盖 —— 已有行要保留，否则会丢掉历史选题记录。文件不存在才新建表头。
 
 ## 目录约定
 
 ```
-<ARTICLES_DIR>/2026-09-10-awesome-xx/
+<当前工作区>/articles/2026-09-10-awesome-xx/
 ├── draft.md        初稿（改写前）
 ├── final.md        定稿（改写后，存档）
 ├── final.html      发布用，浏览器打开复制
@@ -216,4 +214,5 @@ cd "$ISSUE"
     └── diagram.png 正文图 1080px
 ```
 
-`<ARTICLES_DIR>` 和本期目录的绝对路径都由 `scripts/paths.py` 给出，不要手工拼。
+输出目录就是运行时的当前工作区下的 `articles/`；本期目录的绝对路径由 `scripts/paths.py` 给出，
+不要手工拼。
