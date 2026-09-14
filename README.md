@@ -9,9 +9,11 @@
 
 ## 特点
 
-- **Python 侧零依赖** —— `md2wechat.py` 只用标准库，不需要 `pip install`
+- **Python 侧零依赖** —— `md2wechat.py`、`paths.py` 只用标准库，不需要 `pip install`
 - **无需配置即可运行** —— 所有配置项都有默认值，按需覆盖
-- **不写死绝对路径** —— 路径通过占位符 + 会话/环境解析，换机器不用改代码
+- **不写死绝对路径** —— 路径统一由 `scripts/paths.py` 解析，换机器不用改代码
+- **输出目录不随 cwd 漂移** —— 按 `.env` 固定解析，从哪个目录调起都落在同一个地方
+- **交付物不会缺图** —— 漏引用的正文图由出稿脚本自动补齐，不会退化成纯文字
 
 ## 环境要求
 
@@ -59,7 +61,7 @@ cp .env.example .env
 | `PYTHON_BIN` | `python3` | Python 不在 PATH 时 |
 | `NODE_BIN` | `node` | Node 不在 PATH 时 |
 | `NODE_MODULES` | `<SKILL_DIR>/node_modules` | `sharp` 装在别处时 |
-| `WECHAT_ARTICLES_DIR` | 当前工作区下的 `articles/` | 想固定输出目录时 |
+| `WECHAT_ARTICLES_DIR` | `~/articles` | 想固定输出目录时（**建议配**） |
 | `HUMANIZER_SKILL` | 空（跳过去 AI 味步骤） | 需要去 AI 味时 |
 
 `.env` 已被 `.gitignore` 忽略，不会提交。
@@ -77,6 +79,7 @@ cp .env.example .env
 
 | 脚本 | 依赖 |
 | --- | --- |
+| `paths.py` | 无（纯标准库） |
 | `md2wechat.py` | 无（纯标准库） |
 | `svg2png.js` | `sharp`（缺失时自动安装） |
 | `gen_cover.py` | 无（纯标准库，可选组件） |
@@ -87,13 +90,27 @@ cp .env.example .env
 
 ## 文章输出到哪
 
-三级优先，前者覆盖后者：
+**不要靠推导，跑脚本拿绝对路径：**
 
-1. 会话里指定的路径
-2. `.env` 中的 `WECHAT_ARTICLES_DIR`
-3. 当前工作区下的 `articles/`
+```bash
+python scripts/paths.py show            # 所有路径 + 各自来源
+python scripts/paths.py issue CmdDo     # 建并打印 <输出目录>/2026-09-14-CmdDo
+```
 
-默认值是「当前工作区」而非固定目录，这样在任何工作区调用都能正常工作。
+解析顺序，前者覆盖后者：
+
+1. 命令行参数 `--articles-dir`
+2. 环境变量 `WECHAT_ARTICLES_DIR`
+3. `.env` 中的 `WECHAT_ARTICLES_DIR`
+4. 默认 `~/articles`
+
+默认值是一个**固定位置**而不是「当前工作区」：skill 会被任意 agent 从任意 cwd 调起，
+用 cwd 推导会让同一篇文章落到不同地方（从家目录启动就写进 `~/articles`），
+而且所有脚本仍然报成功。想固定输出位置，在 `.env` 里写一行：
+
+```
+WECHAT_ARTICLES_DIR=/path/to/articles
+```
 
 ## 目录结构
 
@@ -111,7 +128,8 @@ github-to-wechat/
 │   ├── cover-prompt.md         封面 prompt 模板
 │   └── image-backends.md       生图后端配置与接入清单
 └── scripts/
-    ├── md2wechat.py            Markdown → 微信 HTML（零依赖，含图片引用校验）
+    ├── paths.py                路径解析：输出目录的唯一来源，输出绝对路径
+    ├── md2wechat.py            Markdown → 微信 HTML（零依赖，自动补齐漏引用的图）
     ├── svg2png.js              SVG → PNG，字号过小时告警
     ├── fitcover.js             居中裁剪 PNG 到指定尺寸（封面用）
     └── gen_cover.py            文生图，OpenAI 兼容接口，出图后自动裁剪封面
@@ -129,7 +147,7 @@ github-to-wechat/
     └── *.png      正文图 1080px 宽
 ```
 
-## 四条硬性规则
+## 五条硬性规则
 
 改动流程时注意不要破坏：
 
@@ -137,7 +155,9 @@ github-to-wechat/
 2. **先去 AI 味，再套 HTML。** 顺序颠倒会把 inline style 当正文改写，样式被破坏。
 3. **选题必须人工确认。** 自动挑选的选题缺少信息增量。
 4. **正文图必须被引用。** 生成 `images/` 里的图却没写进文章，读者只会看到纯文字。
-   `md2wechat.py` 出稿时会列出未被引用的图。
+   写稿时应按语义放好；漏掉的由 `md2wechat.py` 自动补齐并报 `FIX`，
+   看到 `FIX` 应把图挪到真正对应的段落，而不是留着默认位置。
+5. **路径只来自 `paths.py`。** 不用 cwd 推导输出目录，不手工拼本期目录。
 
 ## 已知约束
 
@@ -152,7 +172,9 @@ github-to-wechat/
 - **`<text>` 的 `y` 是基线不是中心。** 垂直居中需要手动计算：
   `y = 块y + 块高/2 + 字号×0.35`。librsvg 对 `dominant-baseline` 支持不稳定。
 - **正文图必须写进稿子。** 生成了图却不引用，读者看到的还是纯文字。
-  `md2wechat.py` 会在出稿时列出未被引用的图。
+  `md2wechat.py` 会按间距自动补齐漏引用的图并报 `FIX`；补进去的位置带
+  `<!-- 自动补图，位置可调 -->` 标记，方便回头调整，渲染 HTML 时自动去掉。
+  想手动控制可加 `--no-fix-images`（只警告）或 `--strict-images`（未引用就 exit 2）。
 - **不要编造博主本人的经历。** 具体场景只能写成通用痛点，不能写成「上周我帮同事……」。
   详见 `references/style-guide.md` 的「经历红线」。
 
@@ -160,7 +182,17 @@ github-to-wechat/
 
 **为什么路径用占位符？** skill 会被分发到不同机器，写死 `/home/xxx/...` 对别人没有意义，
 也会泄露本机信息。因此 `SKILL.md` 中使用 `<SKILL_DIR>`、`<PYTHON_BIN>` 这类占位符，
-运行时按「会话指定 → `.env` → 默认值」解析。
+运行时由 `scripts/paths.py` 按「命令行参数 → 环境变量 → `.env` → 默认值」解析。
+
+**为什么输出目录必须过脚本？** 文档曾写「输出目录是当前工作区下的 `articles/`」，
+看着合理，实际会随调用方的 cwd 漂移：换个 agent 客户端、从家目录启动，
+文章就写进了 `~/articles`，而每个脚本都报成功。文档是建议，脚本是强制 ——
+现在所有路径统一由 `paths.py` 解析（按绝对路径读 `.env`，输出绝对路径），没有 cwd 参与。
+
+**为什么漏引用的图要自动补，而不只是警告？** 同一个坑踩了三次：写进文档、打印告警，
+都不如让脚本直接动手。告警容易被刷过去，而且退出码仍是 0，调用方会当成成功 ——
+结果就是一篇纯文字文章配一个没人看的 `images/` 目录。既然脚本能确定图片在哪、
+能算出合适的插入位置，就直接补上，并把「这里是我补的」标在稿子里。
 
 **为什么 Python 侧零依赖？** `md2wechat.py` 需要在生成标签时直接写入 inline style，
 自行渲染 Markdown 即可完成，不需要额外的 Markdown 库和 HTML 解析库，
