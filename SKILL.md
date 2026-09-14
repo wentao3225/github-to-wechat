@@ -65,6 +65,9 @@ git clone <repo-url> "$SKILLS_DIR/github-to-wechat"
 
 默认值面向开箱即用。只在默认值不合用时才需要写 `.env`。
 
+> 运行时路径不要写死版本号。版本管理器升级后目录名会变（例如 node 的
+> `22.22.2-2` → `22.22.2-3`），写死的路径会静默失效。只有默认值不可用时才配。
+
 ## 输出目录
 
 本期目录为 `<ARTICLES_DIR>/YYYY-MM-DD-<repo-name>/`。
