@@ -104,7 +104,10 @@ const input = path.resolve(args[0]);
 const width = parseInt(args[1] || '1080', 10);
 const density = parseInt(args[2] || '288', 10);
 
-const MIN_FONT_SIZE = 14;
+// Must match the red line documented in references/svg-template.md.
+// At viewBox width 680, one SVG unit maps to ~1.59px on the 1080px PNG, and the
+// phone then scales it back down — below 16px the text stops being readable.
+const MIN_FONT_SIZE = 16;
 
 function checkFontSizes(file) {
   const svg = fs.readFileSync(file, 'utf8');
@@ -112,8 +115,9 @@ function checkFontSizes(file) {
   const tooSmall = [...new Set(sizes.filter((s) => s < MIN_FONT_SIZE))].sort((a, b) => a - b);
   if (tooSmall.length) {
     console.log(
-      `WARN ${path.basename(file)}: font-size ${tooSmall.join(', ')}px < ${MIN_FONT_SIZE}px. ` +
-      `at viewBox 680 this renders ~${Math.round(tooSmall[0] * 1080 / 680)}px on a 1080-wide PNG, unreadable on a phone. body text should be 20px+.`
+      `WARN ${path.basename(file)}: 字号 ${tooSmall.join(', ')}px 低于 ${MIN_FONT_SIZE}px 下限，手机上读不清。` +
+      ` 正文用 20px、图注 18px、标题 22-26px；内容装不下就删条目或拆成两张图，不要缩字号。` +
+      ` 骨架见 references/svg-template.md。`
     );
     return false;
   }
@@ -122,7 +126,6 @@ function checkFontSizes(file) {
 
 async function convert(file) {
   const out = file.replace(/\.svg$/i, '.png');
-  checkFontSizes(file);
   try {
     const info = await sharp(file, { density })
       .resize({ width, withoutEnlargement: false })
@@ -153,9 +156,14 @@ async function convert(file) {
   }
 
   let ok = 0;
+  let warned = 0;
   for (const f of files) {
+    if (!checkFontSizes(f)) warned++;
     if (await convert(f)) ok++;
   }
   console.log(`\n${ok}/${files.length} converted at width=${width}px`);
+  if (warned) {
+    console.log(`WARN ${warned} 张图的字号低于 ${MIN_FONT_SIZE}px 下限，改完重新转换再出稿。`);
+  }
   process.exit(ok === files.length ? 0 : 1);
 })();

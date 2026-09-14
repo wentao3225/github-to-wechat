@@ -107,12 +107,14 @@ github-to-wechat/
 ├── package-lock.json           锁定依赖版本
 ├── references/
 │   ├── style-guide.md          文风、结构模板、禁用清单
+│   ├── svg-template.md         SVG 示意图骨架（字号间距已调好）
 │   ├── cover-prompt.md         封面 prompt 模板
 │   └── image-backends.md       生图后端配置与接入清单
 └── scripts/
-    ├── md2wechat.py            Markdown → 微信 HTML（零依赖）
+    ├── md2wechat.py            Markdown → 微信 HTML（零依赖，含图片引用校验）
     ├── svg2png.js              SVG → PNG，字号过小时告警
-    └── gen_cover.py            文生图，OpenAI 兼容接口
+    ├── fitcover.js             居中裁剪 PNG 到指定尺寸（封面用）
+    └── gen_cover.py            文生图，OpenAI 兼容接口，出图后自动裁剪封面
 ```
 
 ## 产出物
@@ -127,23 +129,32 @@ github-to-wechat/
     └── *.png      正文图 1080px 宽
 ```
 
-## 三条硬性规则
+## 四条硬性规则
 
 改动流程时注意不要破坏：
 
 1. **SVG 必须转 PNG。** 公众号正文图片只接受 jpg / png / gif。
 2. **先去 AI 味，再套 HTML。** 顺序颠倒会把 inline style 当正文改写，样式被破坏。
 3. **选题必须人工确认。** 自动挑选的选题缺少信息增量。
+4. **正文图必须被引用。** 生成 `images/` 里的图却没写进文章，读者只会看到纯文字。
+   `md2wechat.py` 出稿时会列出未被引用的图。
 
 ## 已知约束
 
 - **图片需要手动上传。** 个人订阅号没有素材管理接口权限（需微信认证），
   只能从 `images/` 目录手动上传。
 - **SVG 字号不要低于 16px。** viewBox 宽 680 时正文至少 20px，标题 22–26px。
-  字号过小在手机上不可读，`svg2png.js` 会告警但不阻断。
+  从 `references/svg-template.md` 抄骨架最省事 —— 那份模板的间距已经调好。
+  `svg2png.js` 会告警但不阻断，看到告警要回去改。
+- **封面会被自动裁剪。** 生图模型很少按 2.35:1 出图，`gen_cover.py` 出图后
+  居中裁剪到 900×383，上下边缘会被切掉，所以主体要摆在水平中线附近。
 - **封面不要生成文字。** 生图模型渲染中文容易出现乱码，标题在后台叠加更可靠。
 - **`<text>` 的 `y` 是基线不是中心。** 垂直居中需要手动计算：
   `y = 块y + 块高/2 + 字号×0.35`。librsvg 对 `dominant-baseline` 支持不稳定。
+- **正文图必须写进稿子。** 生成了图却不引用，读者看到的还是纯文字。
+  `md2wechat.py` 会在出稿时列出未被引用的图。
+- **不要编造博主本人的经历。** 具体场景只能写成通用痛点，不能写成「上周我帮同事……」。
+  详见 `references/style-guide.md` 的「经历红线」。
 
 ## 设计说明
 

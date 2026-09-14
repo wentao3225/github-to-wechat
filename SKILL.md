@@ -54,13 +54,15 @@ agent_created: true
 2. `.env` 配了 `WECHAT_ARTICLES_DIR` → 用它，不必询问
 3. 都没有 → 用当前工作区下的 `articles/`，开工前一句话告知输出位置即可
 
-## 三条硬性规则
+## 四条硬性规则
 
 1. **SVG 必须转 PNG。** 公众号正文图片只接受 jpg / png / gif，SVG 无法上传。
    任何生成的 SVG 都要经过 `svg2png.js`，没有例外。
 2. **先去 AI 味，再套 HTML。** 顺序颠倒时，改写工具会把 inline style 当正文一起改，
    样式会被破坏。固定顺序：Markdown 纯文本 → 去 AI 味 → HTML。
 3. **选题必须人工确认。** 给出候选角度后等用户确认再动笔。自动挑选的选题缺少信息增量。
+4. **正文图必须被引用。** 生成了图却没写进 `final.md`，文章就成了纯文字。
+   第 6 步出稿时 `md2wechat.py` 会列出未被引用的图 —— 看到警告就补引用，用不上就删掉。
 
 ## 流程
 
@@ -86,13 +88,30 @@ agent_created: true
 
 ### 3. 生成配图
 
-- **封面**：生图模型，尺寸 900×383（2.35:1）。prompt 参考 `references/cover-prompt.md`，
-  后端选择见 `references/image-backends.md`。
+- **封面**：`gen_cover.py` 生图，目标 900×383（2.35:1）。prompt 参考
+  `references/cover-prompt.md`，后端选择见 `references/image-backends.md`。
+
+  ```bash
+  "<PYTHON_BIN>" "<SKILL_DIR>/scripts/gen_cover.py" \
+    --prompt "<封面 prompt>" --out "images/cover.png" --no-proxy
+  ```
+
+  生图模型很少按你要的比例出图，所以脚本默认会**居中裁剪**到 900×383
+  （`--fit`，默认 `900x383`，不要关掉）。裁剪会切掉上下边缘，
+  写 prompt 时让主体集中在水平中线附近，别把重要元素放在最上/最下。
+
 - **正文示意图**：手写 SVG（架构图 / 流程图 / 对比表），存入 `images/`，再用 `svg2png.js` 转 PNG。
-- **字号规范**：viewBox 宽 680 时，正文文字至少 20px，标题 22–26px，图注 18px，
-  等宽路径 15px。低于 16px 在手机上不可读。转 PNG 用 1080 宽 + density 288（脚本默认值），
-  公众号会再压缩到 750 显示，等于超采样。转换时脚本会对小于 14px 的字号发出警告。
-- 每篇 3–5 张图。SVG 里所有 `rect` / `text` 必须显式写 `fill`，不能依赖 CSS class。
+  骨架直接抄 `references/svg-template.md` —— 那份模板的字号和间距已经调好，
+  从空白开始画是上一次踩坑的原因。
+
+- **字号是最容易翻车的一项**：viewBox 宽 680 时，正文 20px、卡片标题 22px、大标题 26px、
+  图注 18px。**任何文字都不要低于 16px。** 宁可少写几个字、把画布画矮一点，
+  也不要为了塞内容而缩字号 —— 低于 16px 在手机上不可读。
+  转 PNG 用 1080 宽 + density 288（脚本默认值），公众号压缩到 750 显示，等于超采样。
+  `svg2png.js` 会对 <16px 的字号发出警告，**看到警告就回去改，不要忽略继续出稿**。
+
+- 每篇 3–5 张正文图（封面另算）。SVG 里所有 `rect` / `text` 必须显式写 `fill`，
+  不能依赖 CSS class。
 - **文字垂直居中**：`<text>` 的 `y` 是基线而非中心。要塞进高 `h` 的块中时取
   `y = 块y + h/2 + 4`（20px 字号用 +7，15px 用 +5）。librsvg 对 `dominant-baseline`
   支持不稳定，直接计算基线更可靠。
@@ -100,6 +119,12 @@ agent_created: true
 ### 4. 写初稿
 
 按 `references/style-guide.md` 的文风与结构模板写 Markdown，存为 `draft.md`。
+
+**把正文图写进稿子里。** 每张正文图都要在合适位置用 `![一句说明](images/xxx.png)` 引用。
+`images/` 里有几张正文 PNG，稿子里就该有几处引用。图生成了却没写进去，
+读者看到的就是一篇纯文字文章，前面那些图等于白做。封面不进正文，单独上传。
+
+顺序上先写文字、再决定每张图放在哪一段后面。先画图再找位置塞，通常塞得很生硬。
 
 引用 README 的功能描述时**必须改写成自己的话**，原样照抄等同于洗稿。
 

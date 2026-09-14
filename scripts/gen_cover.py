@@ -15,15 +15,22 @@ Response handling covers both common shapes:
     data[0].url      -> downloaded
     data[0].b64_json -> decoded
 
+After saving, the image is center-cropped to WeChat's cover ratio (900x383) by
+scripts/fitcover.js. Image models rarely return the ratio you ask for, so
+cropping afterwards is more reliable than requesting an exact size.
+
 Usage:
     python gen_cover.py --prompt "..." --out images/cover.png --size 1536x1024
     python gen_cover.py --prompt "..." --base-url https://api.agnes-ai.cn \
         --api-key sk-xxx --model some-image-model
+    python gen_cover.py --prompt "..." --out x.png --fit ''    # keep model's size
 """
 import argparse
 import base64
 import json
 import os
+import shutil
+import subprocess
 import sys
 import urllib.request
 
@@ -77,6 +84,21 @@ def save_url(url: str, out: str):
         f.write(r.read())
 
 
+def fit_cover(path: str, size: str, dotenv: dict) -> str:
+    """Center-crop to `size` via scripts/fitcover.js. Returns "" on success."""
+    node = os.environ.get("NODE_BIN") or dotenv.get("NODE_BIN") or shutil.which("node")
+    if not node:
+        return "node not found (put node on PATH, or set NODE_BIN)"
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fitcover.js")
+    if not os.path.exists(script):
+        return "fitcover.js is missing from the scripts/ directory"
+    r = subprocess.run([node, script, path, size], capture_output=True, text=True)
+    if r.returncode != 0:
+        detail = (r.stderr or r.stdout or "exit %d" % r.returncode).strip()
+        return detail.splitlines()[-1][:200] if detail else "unknown error"
+    return ""
+
+
 def main() -> int:
     dotenv = load_dotenv(dotenv_path())
     ap = argparse.ArgumentParser(description="text-to-image via OpenAI-compatible API")
@@ -90,6 +112,9 @@ def main() -> int:
     ap.add_argument("--model", default=os.environ.get("IMAGE_MODEL")
                     or dotenv.get("IMAGE_MODEL", ""))
     ap.add_argument("--quality", default="high", help="passed through if provider supports it")
+    ap.add_argument("--fit", default="900x383", metavar="WxH",
+                    help="center-crop to this size after generation. Default 900x383 "
+                         "(WeChat cover, 2.35:1). Pass --fit '' to keep the model's own size.")
     ap.add_argument("--no-proxy", action="store_true",
                     help="force direct connection; for local proxies (Clash etc.) that are down")
     args = ap.parse_args()
@@ -152,6 +177,14 @@ def main() -> int:
 
     size_kb = os.path.getsize(args.out) // 1024
     print("OK -> %s (%d KB)" % (args.out, size_kb))
+
+    if args.fit:
+        err = fit_cover(args.out, args.fit, dotenv)
+        if err:
+            print("WARN 裁剪到 %s 失败：%s" % (args.fit, err))
+            print("     图片保持生图原始尺寸，上传公众号时需要手动裁剪。")
+        else:
+            print("     已居中裁剪为 %s" % args.fit)
     return 0
 
 

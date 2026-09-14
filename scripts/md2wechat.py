@@ -87,6 +87,7 @@ FENCE_RE = re.compile(r"^(```|~~~)\s*([^\s`]*)\s*$")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*$")
 HR_RE = re.compile(r"^(-{3,}|\*{3,}|_{3,})$")
 ITEM_RE = re.compile(r"^(\s*)([-+*]|\d+[.)])\s+(.*)$")
+IMG_REF_RE = re.compile(r"!\[[^\]]*\]\(\s*([^)\s]+)")
 
 
 def esc(text):
@@ -305,6 +306,40 @@ def strip_front_matter(text):
     return text
 
 
+def check_unused_images(md_path, text):
+    """Body images sitting in images/ that the markdown never references.
+
+    Generating a diagram but forgetting to write it into the article is an easy
+    miss, and the reader just sees a wall of text. cover.png is excluded: covers
+    are uploaded to WeChat separately and never inlined.
+    """
+    img_dir = os.path.join(os.path.dirname(os.path.abspath(md_path)), "images")
+    if not os.path.isdir(img_dir):
+        return []
+    referenced = set(os.path.basename(m.group(1)) for m in IMG_REF_RE.finditer(text))
+    unused = []
+    for name in sorted(os.listdir(img_dir)):
+        if not name.lower().endswith(".png") or name == "cover.png":
+            continue
+        if name not in referenced:
+            unused.append(name)
+    return unused
+
+
+def check_missing_images(md_path, text):
+    """Images the markdown references but that are not on disk."""
+    base = os.path.dirname(os.path.abspath(md_path))
+    missing = []
+    for m in IMG_REF_RE.finditer(text):
+        src = m.group(1)
+        if src.startswith(("http://", "https://", "data:")):
+            continue
+        if not os.path.exists(os.path.join(base, src)) \
+                and not os.path.exists(os.path.join(base, "images", os.path.basename(src))):
+            missing.append(src)
+    return missing
+
+
 def main():
     ap = argparse.ArgumentParser(description="Markdown -> WeChat HTML (inlined styles)")
     ap.add_argument("input")
@@ -325,6 +360,21 @@ def main():
         f.write(out_html)
 
     print("OK -> %s  (%d chars)" % (out_path, len(out_html)))
+
+    # Guards against the "generated diagrams nobody sees" failure mode.
+    unused = check_unused_images(args.input, text)
+    missing = check_missing_images(args.input, text)
+    if unused:
+        print("")
+        print("WARN 以下正文图没有被引用，读者看不到它们：")
+        for name in unused:
+            print("       images/%s   -> 在稿子里加 ![说明](images/%s)" % (name, name))
+        print("     用不上的图直接删掉，不要留在 images/ 里。")
+    if missing:
+        print("")
+        print("WARN 以下图片被引用但文件不存在：")
+        for src in missing:
+            print("       %s" % src)
     return 0
 
 
