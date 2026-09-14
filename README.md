@@ -16,23 +16,34 @@
 ## 环境要求
 
 - Python 3.8+
-- Node.js 18+（仅用于 SVG → PNG）
+- Node.js 20.9+（仅用于 SVG → PNG，版本下限由 `sharp` 决定）
 
 ## 安装
 
 ```bash
 SKILLS_DIR=~/.claude/skills     # 换成你的 skill 目录
 git clone https://github.com/wentao3225/github-to-wechat.git "$SKILLS_DIR/github-to-wechat"
-cd "$SKILLS_DIR/github-to-wechat" && npm install sharp
 ```
 
-常见 skill 目录：`~/.claude/skills/`、`~/.workbuddy/skills/` 等，以你的工具文档为准。
+就这两行，没有后续步骤。常见 skill 目录：`~/.claude/skills/`、`~/.workbuddy/skills/` 等，
+以你的工具文档为准。
 
 > **装在用户级，不要装项目级** —— 部分工具的斜杠命令只从用户级加载，
 > 装项目级会导致命令找不到。
 
+### 依赖怎么解决
+
 `sharp` 是唯一的第三方依赖，用于 SVG → PNG 转换。它的跨平台二进制无法随仓库分发，
-需要这条 `npm install` 装一次。
+所以设计为**首次运行 `svg2png.js` 时自动安装**：装进 `<SKILL_DIR>/node_modules`，
+装完继续执行本次转换，全程不需要手动操作。
+
+想提前装好（比如离线环境）：
+
+```bash
+cd "$SKILLS_DIR/github-to-wechat" && npm install
+```
+
+想关掉自动安装：给 `svg2png.js` 加 `--no-install`，或设环境变量 `NO_AUTO_INSTALL=1`。
 
 ## 配置（全部可选）
 
@@ -68,10 +79,11 @@ cp .env.example .env
 | 脚本 | 依赖 |
 | --- | --- |
 | `md2wechat.py` | 无（纯标准库） |
-| `svg2png.js` | `sharp` |
+| `svg2png.js` | `sharp`（缺失时自动安装） |
 | `gen_cover.py` | 无（纯标准库，可选组件） |
 
-`svg2png.js` 查找 `sharp` 的顺序：`<SKILL_DIR>/node_modules` → `.env` 中的 `NODE_MODULES`。
+`svg2png.js` 按这个顺序找 `sharp`：`<SKILL_DIR>/node_modules` → `.env` 中的
+`NODE_MODULES`。两处都没有就自动执行 `npm install`，装到 `<SKILL_DIR>/node_modules`。
 命令行不需要设置 `NODE_PATH`。
 
 ## 文章输出到哪
@@ -92,6 +104,8 @@ github-to-wechat/
 ├── README.md
 ├── .env.example                配置模板
 ├── .gitignore
+├── package.json                声明 sharp 依赖，供自动安装使用
+├── package-lock.json           锁定依赖版本
 ├── references/
 │   ├── style-guide.md          文风、结构模板、禁用清单
 │   ├── cover-prompt.md         封面 prompt 模板
@@ -141,3 +155,7 @@ github-to-wechat/
 **为什么 Python 侧零依赖？** `md2wechat.py` 需要在生成标签时直接写入 inline style，
 自行渲染 Markdown 即可完成，不需要额外的 Markdown 库和 HTML 解析库，
 省掉一整步依赖安装。代价是需要自己维护渲染逻辑（约 250 行）。
+
+**为什么 `sharp` 改成自动安装？** 它的跨平台二进制无法随仓库提交 —— 提交进去会让
+仓库膨胀几十 MB，而且对异构平台（Linux / macOS）完全没用。让用户手动跑一条
+`npm install` 又是明显的流失点，所以把安装藏进首次运行：检测到缺失就装，装完继续。

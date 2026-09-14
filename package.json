@@ -1,0 +1,12 @@
+{
+  "name": "github-to-wechat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SVG to PNG conversion dependency for the github-to-wechat skill",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "dependencies": {
+    "sharp": "^0.35.0"
+  }
+}

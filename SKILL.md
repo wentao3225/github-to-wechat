@@ -17,10 +17,10 @@ agent_created: true
 ```bash
 SKILLS_DIR=~/.claude/skills     # 换成你的 skill 目录
 git clone <repo-url> "$SKILLS_DIR/github-to-wechat"
-cd "$SKILLS_DIR/github-to-wechat" && npm install sharp
 ```
 
-Python 脚本只用标准库，不需要 pip install。细节见 `README.md`。
+就这两行。Python 脚本只用标准库，不需要 pip install；`sharp` 由 `svg2png.js`
+首次运行时自动安装。细节见 `README.md`。
 
 **装在用户级 skill 目录**（`~/.claude/skills/`、`~/.workbuddy/skills/` 等，以工具文档为准），
 不要装项目级：部分工具的斜杠命令只从用户级加载，装项目级会导致命令找不到。
@@ -39,11 +39,12 @@ Python 脚本只用标准库，不需要 pip install。细节见 `README.md`。
 | 组件 | 依赖 | 说明 |
 | --- | --- | --- |
 | `md2wechat.py` | 无 | 纯标准库 |
-| `svg2png.js` | `sharp` | 装在 `<SKILL_DIR>/node_modules` |
+| `svg2png.js` | `sharp` | 缺失时自动安装，见下 |
 | `gen_cover.py` | 无 | 纯标准库，可选组件 |
 
-`sharp` 跨平台二进制无法随仓库分发，首次使用前需执行一次 `npm install sharp`。
-若未安装，`svg2png.js` 会报错提示。
+`sharp` 的跨平台二进制无法随仓库分发，因此设计为首次运行 `svg2png.js` 时自动安装：
+检测到缺失就执行 `npm install` 装进 `<SKILL_DIR>/node_modules`，装完继续本次转换。
+跳过自动安装可加 `--no-install` 参数，或设环境变量 `NO_AUTO_INSTALL=1`。
 
 ## 配置
 
@@ -150,7 +151,8 @@ cd "<本期目录>"
 ```
 
 不需要设置 `NODE_PATH`：Node 按脚本自身位置解析模块，
-只要 `sharp` 在 `<SKILL_DIR>/node_modules` 就能找到（或由 `<NODE_MODULES>` 指定）。
+只要 `sharp` 在 `<SKILL_DIR>/node_modules` 就能找到（或由 `<NODE_MODULES>` 指定）；
+两处都没有时脚本会自动装一次再继续，不需要人工介入。
 
 产出：
 
