@@ -16,7 +16,7 @@ agent_created: true
 
 ## 依赖
 
-`md2wechat.py` 与 `gen_cover.py` 只用 Python 标准库，无需安装。
+`paths.py`、`md2wechat.py` 与 `gen_cover.py` 只用 Python 标准库，无需安装。
 `svg2png.js` 需要 `sharp`，已设计为首次运行时自动安装到 `<SKILL_DIR>/node_modules`，
 装完继续本次转换，无需人工介入，也不用设置 `NODE_PATH`。
 脚本报「找不到模块」时才需要排查依赖：加 `--no-install` 可跳过自动安装，
@@ -33,38 +33,66 @@ agent_created: true
 | 占位符 | .env 变量 | 默认值 | 什么时候才需要配 |
 | --- | --- | --- | --- |
 | `<SKILL_DIR>` | — | 本文件所在目录 | 不用配 |
-| `<ARTICLES_DIR>` | `WECHAT_ARTICLES_DIR` | 当前工作区下的 `articles/` | 想固定输出目录时 |
-| `<PYTHON_BIN>` | `PYTHON_BIN` | `python3` | 运行时不在 PATH 时 |
+| `<ARTICLES_DIR>` | `WECHAT_ARTICLES_DIR` | `~/articles` | 想固定输出目录时 |
+| `<PYTHON_BIN>` | `PYTHON_BIN` | 当前解释器 | 运行时不在 PATH 时 |
 | `<NODE_BIN>` | `NODE_BIN` | `node` | 运行时不在 PATH 时 |
 | `<NODE_MODULES>` | `NODE_MODULES` | `<SKILL_DIR>/node_modules` | `sharp` 装在别处时 |
 | `<HUMANIZER_SKILL>` | `HUMANIZER_SKILL` | 空（跳过第 5 步） | 需要去 AI 味时 |
 
 默认值面向开箱即用。只在默认值不合用时才需要写 `.env`。
 
+**路径类的值不要手工推导。** `scripts/paths.py` 会按同样的顺序（命令行参数 →
+环境变量 → `<SKILL_DIR>/.env` → 默认值）解析并打印绝对路径。用它，不要自己拼。
+
 > 运行时路径不要写死版本号。版本管理器升级后目录名会变（例如 node 的
 > `22.22.2-2` → `22.22.2-3`），写死的路径会静默失效。只有默认值不可用时才配。
 
-## 输出目录
+## 输出目录：只能问脚本，不要自己拼
 
-本期目录为 `<ARTICLES_DIR>/YYYY-MM-DD-<repo-name>/`。
+**不要用「当前工作区」「当前目录」推导任何路径，也不要手工拼 `<ARTICLES_DIR>`。**
+「当前工作区」对 skill 没有意义 —— skill 会被任意 agent 从任意 cwd 调起，
+从家目录启动时同样的文章会落进 `~/articles`，而不是 `.env` 里配的目录，
+而所有脚本仍然报成功。
 
-**不要为此弹选择题打断流程**，按序判断：
+开工第一件事，跑路径解析脚本（它按绝对路径读 `<SKILL_DIR>/.env`，与 cwd 无关）：
 
-1. 用户本次指定了路径 → 用它
-2. `.env` 配了 `WECHAT_ARTICLES_DIR` → 用它，不必询问
-3. 都没有 → 用当前工作区下的 `articles/`，开工前一句话告知输出位置即可
+```bash
+"<PYTHON_BIN>" "<SKILL_DIR>/scripts/paths.py" show      # 所有路径 + 各自来源
+ISSUE="$("<PYTHON_BIN>" "<SKILL_DIR>/scripts/paths.py" issue <repo-name>)"
+cd "$ISSUE"
+```
 
-## 四条硬性规则
+`issue` 打印 `<ARTICLES_DIR>/YYYY-MM-DD-<repo-name>/` 的绝对路径并建好目录。
+本期所有产出都落在这里，`$ISSUE` 就是它的绝对路径。
+
+优先级脚本已经处理好了，**不要为此弹选择题打断流程**：
+
+1. 用户本次指定了目录 → 传 `--articles-dir <路径>`
+2. `.env` 配了 `WECHAT_ARTICLES_DIR` → 脚本自己会读，不必询问
+3. 都没配 → 落到 `~/articles`，开工前一句话告知输出位置即可
+
+想换输出位置就改 `.env` 的 `WECHAT_ARTICLES_DIR`，不要改这段流程。
+
+## 五条硬性规则
 
 1. **SVG 必须转 PNG。** 公众号正文图片只接受 jpg / png / gif，SVG 无法上传。
    任何生成的 SVG 都要经过 `svg2png.js`，没有例外。
 2. **先去 AI 味，再套 HTML。** 顺序颠倒时，改写工具会把 inline style 当正文一起改，
    样式会被破坏。固定顺序：Markdown 纯文本 → 去 AI 味 → HTML。
 3. **选题必须人工确认。** 给出候选角度后等用户确认再动笔。自动挑选的选题缺少信息增量。
-4. **正文图必须被引用。** 生成了图却没写进 `final.md`，文章就成了纯文字。
-   第 6 步出稿时 `md2wechat.py` 会列出未被引用的图 —— 看到警告就补引用，用不上就删掉。
+4. **正文图必须被引用。** 生成了图却没写进稿子，文章就成了纯文字。
+   引用要在**写稿时按语义放好**，这是正路。第 6 步 `md2wechat.py` 会兜底：
+   发现没被引用的图，按间距补进 `final.md` 并报 `FIX`。
+   看到 `FIX` 说明写稿时漏了 —— 回去把图挪到真正对应的段落后面，别留着默认位置。
+5. **路径只来自 `paths.py`。** 不要用 cwd 推导 `<ARTICLES_DIR>`，不要手工拼本期目录。
+   第 0 步跑 `paths.py issue <repo-name>`，用它打印出来的绝对路径。
 
 ## 流程
+
+### 0. 解析输出目录
+
+见上面「输出目录」。先跑 `paths.py issue <repo-name>` 拿到 `$ISSUE` 并 `cd` 进去，
+后续每一步都在这个目录里执行。目录不需要手工 `mkdir`，脚本会建。
 
 ### 1. 抓仓库信息
 
@@ -120,9 +148,10 @@ agent_created: true
 
 按 `references/style-guide.md` 的文风与结构模板写 Markdown，存为 `draft.md`。
 
-**把正文图写进稿子里。** 每张正文图都要在合适位置用 `![一句说明](images/xxx.png)` 引用。
-`images/` 里有几张正文 PNG，稿子里就该有几处引用。图生成了却没写进去，
-读者看到的就是一篇纯文字文章，前面那些图等于白做。封面不进正文，单独上传。
+**把正文图写进稿子里。** 每张正文图都要在合适位置用 `![一句说明](images/xxx.png)` 引用，
+说明写清这张图在讲什么。`images/` 里有几张正文 PNG，稿子里就该有几处引用。
+图生成了却没写进去，读者看到的就是一篇纯文字文章，前面那些图等于白做。
+封面不进正文，单独上传。
 
 顺序上先写文字、再决定每张图放在哪一段后面。先画图再找位置塞，通常塞得很生硬。
 
@@ -143,8 +172,10 @@ agent_created: true
 
 ### 6. 出稿
 
+在第 0 步拿到的 `$ISSUE` 里执行：
+
 ```bash
-cd "<本期目录>"
+cd "$ISSUE"
 
 # SVG -> PNG（必须；默认 1080 宽 / density 288）
 "<NODE_BIN>" "<SKILL_DIR>/scripts/svg2png.js" "images"
@@ -153,6 +184,11 @@ cd "<本期目录>"
 "<PYTHON_BIN>" "<SKILL_DIR>/scripts/md2wechat.py" "final.md" \
   --theme "#3b82f6" --title "<标题>"
 ```
+
+`md2wechat.py` 会把没被引用的正文图按间距补进 `final.md` 并报 `FIX`，因此
+交付物不会退化成纯文字。看到 `FIX` 就去按硬性规则 4 把图挪到语义正确的段落后面，
+再跑一次 —— 补进去的位置带 `<!-- 自动补图，位置可调 -->`，渲染 HTML 时会自动去掉，
+在稿子里留着就是提醒你还没调。
 
 不需要设置 `NODE_PATH`：Node 按脚本自身位置解析模块，
 只要 `sharp` 在 `<SKILL_DIR>/node_modules` 就能找到（或由 `<NODE_MODULES>` 指定）；
@@ -164,7 +200,8 @@ cd "<本期目录>"
 - `final.html` —— 浏览器打开 → 全选 → 粘贴进公众号编辑器
 - `images/*.png` —— 手动上传到公众号
 
-最后把标题、摘要（≤54 字）、仓库名写入 `<ARTICLES_DIR>/topics.md` 台账，避免重复选题。
+最后把标题、摘要（≤54 字）、仓库名**追加**到 `<ARTICLES_DIR>/topics.md`（`$ISSUE` 的上一级）。
+台账是追加不是覆盖 —— 已有行要保留，否则会丢掉历史选题记录。文件不存在才新建表头。
 
 ## 目录约定
 
@@ -178,3 +215,5 @@ cd "<本期目录>"
     ├── diagram.svg SVG 源文件（便于修改）
     └── diagram.png 正文图 1080px
 ```
+
+`<ARTICLES_DIR>` 和本期目录的绝对路径都由 `scripts/paths.py` 给出，不要手工拼。

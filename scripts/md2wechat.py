@@ -297,6 +297,15 @@ class Renderer:
         return "".join(parts)
 
 
+AUTOFIX_MARK_RE = re.compile(r"[ \t]*<!--\s*自动补图[^>]*-->")
+
+
+def strip_autofix_marks(text):
+    """Drop auto-insert bookkeeping before rendering — it is a note to the
+    editor, not part of the article."""
+    return AUTOFIX_MARK_RE.sub("", text)
+
+
 def strip_front_matter(text):
     """Drop a leading YAML front matter block, if present."""
     if text.startswith("---"):
@@ -306,24 +315,106 @@ def strip_front_matter(text):
     return text
 
 
-def check_unused_images(md_path, text):
-    """Body images sitting in images/ that the markdown never references.
+BODY_IMAGE_EXT = (".png", ".jpg", ".jpeg", ".gif")
+COVER_NAME = "cover.png"
+# Marks an image the converter inserted itself. The position came from spacing,
+# not from meaning, so it stays visible in the .md archive for a human or agent
+# to re-place, and is stripped before the markdown is rendered to HTML.
+AUTOFIX_MARK = "<!-- 自动补图，位置可调 -->"
 
-    Generating a diagram but forgetting to write it into the article is an easy
-    miss, and the reader just sees a wall of text. cover.png is excluded: covers
-    are uploaded to WeChat separately and never inlined.
-    """
+
+def body_images_on_disk(md_path):
+    """Body images in images/. cover.png is excluded: covers are uploaded to
+    WeChat separately and never inlined."""
     img_dir = os.path.join(os.path.dirname(os.path.abspath(md_path)), "images")
     if not os.path.isdir(img_dir):
         return []
-    referenced = set(os.path.basename(m.group(1)) for m in IMG_REF_RE.finditer(text))
-    unused = []
-    for name in sorted(os.listdir(img_dir)):
-        if not name.lower().endswith(".png") or name == "cover.png":
+    return [n for n in sorted(os.listdir(img_dir))
+            if n.lower().endswith(BODY_IMAGE_EXT) and n != COVER_NAME]
+
+
+def referenced_images(text):
+    return set(os.path.basename(m.group(1)) for m in IMG_REF_RE.finditer(text))
+
+
+def check_unused_images(md_path, text):
+    """Body images on disk that the markdown never references."""
+    referenced = referenced_images(text)
+    return [n for n in body_images_on_disk(md_path) if n not in referenced]
+
+
+def insertable_slots(lines):
+    """Line indices that end a top-level prose block — safe places to drop an image.
+
+    An image parked in the middle of a paragraph, a list or a table reads badly,
+    so only block boundaries qualify.
+    """
+    slots = []
+    in_fence = False
+    for i, raw in enumerate(lines):
+        s = raw.strip()
+        if FENCE_RE.match(s) or s.startswith("```") or s.startswith("~~~"):
+            in_fence = not in_fence
             continue
-        if name not in referenced:
-            unused.append(name)
-    return unused
+        if in_fence or not s:
+            continue
+        nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        if nxt:
+            continue                         # mid-block, not a boundary
+        if s[0] in "#>|":
+            continue                         # heading / quote / table
+        if HR_RE.match(s) or ITEM_RE.match(raw):
+            continue                         # horizontal rule / list item
+        if IMG_REF_RE.search(s):
+            continue                         # already carries an image
+        slots.append(i)
+    return slots
+
+
+def pick_slots(slots, n):
+    """Pick n slots spread evenly across the article, not clustered at the top."""
+    if not slots or n <= 0:
+        return []
+    if n >= len(slots):
+        return list(slots)
+    step = len(slots) / float(n)
+    picked, seen = [], set()
+    for k in range(n):
+        idx = slots[int(k * step + step / 2)]
+        if idx not in seen:
+            seen.add(idx)
+            picked.append(idx)
+    return picked
+
+
+def insert_images(lines, slots, names):
+    """Return new lines with `names` referenced after the given slots.
+
+    Walks back to front so earlier insertions do not shift later indices.
+    """
+    out = list(lines)
+    if not slots:
+        # nothing to anchor to — park them at the end rather than dropping them
+        for name in names:
+            out.extend(["", "![%s](images/%s)" % (img_alt(name), name)])
+        return out
+    picked = pick_slots(slots, len(names))
+    plan = [(picked[i] if i < len(picked) else slots[-1], name)
+            for i, name in enumerate(names)]
+    for slot, name in sorted(plan, key=lambda p: -p[0]):
+        ref = "![%s](images/%s) %s" % (img_alt(name), name, AUTOFIX_MARK)
+        at = slot + 1
+        if at < len(out) and not out[at].strip():
+            at += 1
+            out[at:at] = [ref, ""]
+        else:
+            out[slot + 1:slot + 1] = ["", ref]
+    return out
+
+
+def img_alt(name):
+    """Readable alt text; WeChat does not show it, but it keeps the markdown sane."""
+    return os.path.splitext(name)[0].replace("-", " ").replace("_", " ").strip()
 
 
 def check_missing_images(md_path, text):
@@ -346,11 +437,38 @@ def main():
     ap.add_argument("-o", "--output", default=None)
     ap.add_argument("--theme", default=DEFAULT_THEME)
     ap.add_argument("--title", default="")
+    ap.add_argument("--no-fix-images", action="store_true",
+                    help="only warn about unreferenced body images, do not insert them")
+    ap.add_argument("--strict-images", action="store_true",
+                    help="exit 2 when body images are unreferenced, without inserting")
     args = ap.parse_args()
 
     with open(args.input, "r", encoding="utf-8") as f:
-        text = strip_front_matter(f.read())
+        raw = f.read()
 
+    # Guard against the "generated diagrams nobody sees" failure mode.
+    # A warning on stdout is easy to scroll past and the run still exits 0, so
+    # callers kept reporting success on a text-only article. Forgetting to
+    # reference a diagram is a near-certainty across agents; repairing it here
+    # is what makes the guarantee hold instead of merely being documented.
+    lines = raw.split("\n")
+    unused = check_unused_images(args.input, raw)
+
+    inserted = []
+    if unused and args.strict_images:
+        print("ERROR 以下正文图没有被 %s 引用：" % os.path.basename(args.input))
+        for name in unused:
+            print("       images/%s" % name)
+        print("     加引用 ![说明](images/%s)，或删掉用不上的图。" % unused[0])
+        return 2
+    if unused and not args.no_fix_images:
+        lines = insert_images(lines, insertable_slots(lines), unused)
+        raw = "\n".join(lines)
+        with open(args.input, "w", encoding="utf-8") as f:
+            f.write(raw)
+        inserted = unused
+
+    text = strip_autofix_marks(strip_front_matter(raw))
     body = Renderer(args.theme).render(text.split("\n"))
     title = args.title or os.path.splitext(os.path.basename(args.input))[0]
     out_html = HTML_TPL.format(title=esc(title), section_style=STYLES["section"], body=body)
@@ -361,15 +479,20 @@ def main():
 
     print("OK -> %s  (%d chars)" % (out_path, len(out_html)))
 
-    # Guards against the "generated diagrams nobody sees" failure mode.
-    unused = check_unused_images(args.input, text)
-    missing = check_missing_images(args.input, text)
-    if unused:
+    if inserted:
         print("")
-        print("WARN 以下正文图没有被引用，读者看不到它们：")
+        print("FIX %d 张正文图没有被稿子引用，已补进 %s：" %
+              (len(inserted), os.path.basename(args.input)))
+        for name in inserted:
+            print("       images/%s" % name)
+        print("     位置不理想就直接改稿子，HTML 是照它渲染的。")
+    elif unused:
+        print("")
+        print("WARN 以下正文图没有被引用，读者看不到它们（--no-fix-images 已跳过自动补齐）：")
         for name in unused:
             print("       images/%s   -> 在稿子里加 ![说明](images/%s)" % (name, name))
-        print("     用不上的图直接删掉，不要留在 images/ 里。")
+
+    missing = check_missing_images(args.input, raw)
     if missing:
         print("")
         print("WARN 以下图片被引用但文件不存在：")
