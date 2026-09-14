@@ -21,12 +21,11 @@
 ## 安装
 
 ```bash
-SKILLS_DIR=~/.claude/skills     # 换成你的 skill 目录
-git clone https://github.com/wentao3225/github-to-wechat.git "$SKILLS_DIR/github-to-wechat"
+git clone https://github.com/wentao3225/github-to-wechat.git ~/.claude/skills/github-to-wechat
 ```
 
-就这两行，没有后续步骤。常见 skill 目录：`~/.claude/skills/`、`~/.workbuddy/skills/` 等，
-以你的工具文档为准。
+一行搞定，没有后续步骤。把路径末段换成你的 skill 目录即可
+（`~/.claude/skills/`、`~/.workbuddy/skills/` 等，以你的工具文档为准）。
 
 > **装在用户级，不要装项目级** —— 部分工具的斜杠命令只从用户级加载，
 > 装项目级会导致命令找不到。
@@ -40,7 +39,7 @@ git clone https://github.com/wentao3225/github-to-wechat.git "$SKILLS_DIR/github
 想提前装好（比如离线环境）：
 
 ```bash
-cd "$SKILLS_DIR/github-to-wechat" && npm install
+cd ~/.claude/skills/github-to-wechat && npm install
 ```
 
 想关掉自动安装：给 `svg2png.js` 加 `--no-install`，或设环境变量 `NO_AUTO_INSTALL=1`。
