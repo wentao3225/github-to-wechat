@@ -307,11 +307,15 @@ def strip_autofix_marks(text):
 
 
 def strip_front_matter(text):
-    """Drop a leading YAML front matter block, if present."""
-    if text.startswith("---"):
-        m = re.match(r"^---\n.*?\n---\n", text, re.S)
-        if m:
-            return text[m.end():]
+    """Drop a leading YAML front matter block, if present.
+
+    Tolerates CRLF line endings and a block that ends at EOF without a trailing
+    newline; the earlier LF-only pattern left a Windows-authored front matter in
+    place, where it rendered as a stray paragraph.
+    """
+    m = re.match(r"^---[ \t]*\r?\n.*?\r?\n---[ \t]*(?:\r?\n|$)", text, re.S)
+    if m:
+        return text[m.end():]
     return text
 
 

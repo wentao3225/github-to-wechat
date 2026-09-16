@@ -111,7 +111,6 @@ def main() -> int:
                     or os.environ.get("AGNES_API_KEY") or dotenv.get("IMAGE_API_KEY"))
     ap.add_argument("--model", default=os.environ.get("IMAGE_MODEL")
                     or dotenv.get("IMAGE_MODEL", ""))
-    ap.add_argument("--quality", default="high", help="passed through if provider supports it")
     ap.add_argument("--fit", default="900x383", metavar="WxH",
                     help="center-crop to this size after generation. Default 900x383 "
                          "(WeChat cover, 2.35:1). Pass --fit '' to keep the model's own size.")
@@ -151,8 +150,8 @@ def main() -> int:
         detail = e.read().decode("utf-8", "replace")[:500]
         hint = ""
         if e.code == 400:
-            hint = ("\nsize 无效时先怀疑档位名：Agnes 的 size 只收 1K/2K/3K/4K，"
-                    "不收 1536x1024 这类像素值（视频接口同理）。加 --size 2K 重试。")
+            hint = ("\nsize 有可能不被这个平台接受：有的平台只认像素值（1536x1024），"
+                    "有的只认档位名（1K/2K/3K/4K）。换一种重试，例如 --size 2K。")
         return fail("HTTP %s from %s%s\n%s" % (e.code, endpoint, hint, detail))
     except urllib.error.URLError as e:
         hint = ""

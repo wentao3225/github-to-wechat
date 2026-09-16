@@ -2,8 +2,8 @@
 
 把一个 GitHub 仓库地址变成一篇可以直接发到微信公众号的文章。
 
-六步流程：抓仓库真实数据 → 定选题角度（人工确认）→ 生成配图 → 写初稿 →
-可选地去 AI 味 → 产出可一键复制的 HTML 和图片文件夹。
+流程：解析输出目录 → 抓仓库真实数据 → 定选题角度（人工确认）→ 生成配图 →
+写初稿 → 可选地去 AI 味 → 产出可一键复制的 HTML 和图片文件夹。
 
 以 skill 形式提供，完整流程规范见 [`SKILL.md`](SKILL.md)。
 
@@ -18,16 +18,17 @@
 ## 环境要求
 
 - Python 3.8+
-- Node.js 20.9+（仅用于 SVG → PNG，版本下限由 `sharp` 决定）
+- Node.js 20.9+（用于 SVG → PNG 与封面裁剪，版本下限由 `sharp` 决定）
 
 ## 安装
 
 ```bash
-git clone https://github.com/wentao3225/github-to-wechat.git ~/.claude/skills/github-to-wechat
+git clone https://github.com/wentao3225/github-to-wechat.git ~/.agents/skills/github-to-wechat
 ```
 
 一行搞定，没有后续步骤。把路径末段换成你的 skill 目录即可
-（`~/.claude/skills/`、`~/.workbuddy/skills/` 等，以你的工具文档为准）。
+（`~/.agents/skills/` 是多客户端共用的位置，另有 `~/.claude/skills/`、
+`~/.workbuddy/skills/` 等，以你的工具文档为准）。
 
 > **装在用户级，不要装项目级** —— 部分工具的斜杠命令只从用户级加载，
 > 装项目级会导致命令找不到。
@@ -48,7 +49,8 @@ cd ~/.claude/skills/github-to-wechat && npm install
 
 ## 配置（全部可选）
 
-不配置也能直接跑，默认值面向开箱即用。需要调整时：
+不配置也能跑 —— 只是用不了 `gen_cover.py`（调外部生图 API 需要 key），
+封面得改用宿主工具自带的生图能力。需要调整时：
 
 ```bash
 cp .env.example .env
@@ -56,10 +58,11 @@ cp .env.example .env
 
 | 变量 | 默认值 | 什么时候需要配 |
 | --- | --- | --- |
-| `IMAGE_API_KEY` | 空（用宿主工具生图） | 想走外部生图 API 时 |
-| `IMAGE_MODEL` | `agnes-image-2.5-flash` | 想换图片模型时 |
-| `PYTHON_BIN` | `python3` | Python 不在 PATH 时 |
-| `NODE_BIN` | `node` | Node 不在 PATH 时 |
+| `IMAGE_API_BASE` | `https://api.agnes-ai.cn` | 换供应商时 |
+| `IMAGE_API_KEY` | 空（配了才能用 `gen_cover.py`） | 想调外部生图 API 时 |
+| `IMAGE_MODEL` | 空（不配 `gen_cover.py` 会直接报错） | 想调外部生图 API 时 |
+| `PYTHON_BIN` | 当前解释器 | Python 不在 PATH 时 |
+| `NODE_BIN` | PATH 上的 `node` | Node 不在 PATH 时 |
 | `NODE_MODULES` | `<SKILL_DIR>/node_modules` | `sharp` 装在别处时 |
 | `HUMANIZER_SKILL` | 空（跳过去 AI 味步骤） | 需要去 AI 味时 |
 
@@ -81,7 +84,8 @@ cp .env.example .env
 | `paths.py` | 无（纯标准库） |
 | `md2wechat.py` | 无（纯标准库） |
 | `svg2png.js` | `sharp`（缺失时自动安装） |
-| `gen_cover.py` | 无（纯标准库，可选组件） |
+| `fitcover.js` | `sharp`（缺失时自动安装） |
+| `gen_cover.py` | 纯标准库；出图后的裁剪会调用 `fitcover.js`，所以封面这步要有 Node |
 
 `svg2png.js` 按这个顺序找 `sharp`：`<SKILL_DIR>/node_modules` → `.env` 中的
 `NODE_MODULES`。两处都没有就自动执行 `npm install`，装到 `<SKILL_DIR>/node_modules`。
@@ -108,8 +112,9 @@ skill 会被任意 agent 从任意工作区调起，「当前工作区」就是�
 
 ```
 github-to-wechat/
-├── SKILL.md                    六步流程主文件（skill 入口）
+├── SKILL.md                    流程规范主文件（skill 入口）
 ├── README.md
+├── LICENSE                     MIT
 ├── .env.example                配置模板
 ├── .gitignore
 ├── package.json                声明 sharp 依赖，供自动安装使用
@@ -122,6 +127,7 @@ github-to-wechat/
 └── scripts/
     ├── paths.py                路径解析：输出目录的唯一来源，输出绝对路径
     ├── md2wechat.py            Markdown → 微信 HTML（零依赖，自动补齐漏引用的图）
+    ├── sharp-loader.js         sharp 查找与首次自动安装（svg2png/fitcover 共用）
     ├── svg2png.js              SVG → PNG，字号过小时告警
     ├── fitcover.js             居中裁剪 PNG 到指定尺寸（封面用）
     └── gen_cover.py            文生图，OpenAI 兼容接口，出图后自动裁剪封面
@@ -130,7 +136,7 @@ github-to-wechat/
 ## 产出物
 
 ```
-<输出目录>/2026-09-10-<repo-name>/
+<工作区>/articles/2026-09-10-<repo-name>/
 ├── draft.md       初稿（改写之前）
 ├── final.md       定稿（存档）
 ├── final.html     发布用，浏览器打开 → 全选 → 粘贴进公众号编辑器
@@ -195,3 +201,7 @@ github-to-wechat/
 **为什么 `sharp` 改成自动安装？** 它的跨平台二进制无法随仓库提交 —— 提交进去会让
 仓库膨胀几十 MB，而且对异构平台（Linux / macOS）完全没用。让用户手动跑一条
 `npm install` 又是明显的流失点，所以把安装藏进首次运行：检测到缺失就装，装完继续。
+
+## 许可证
+
+[MIT](LICENSE)

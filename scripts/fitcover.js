@@ -13,47 +13,13 @@
  * Default target is 900x383. Cropping is center-anchored (fit: cover), and the
  * file is overwritten in place — the original aspect is not preserved.
  *
- * Needs `sharp`; auto-installs into <SKILL_DIR>/node_modules on first use,
- * same as svg2png.js. Set NO_AUTO_INSTALL=1 to disable.
+ * Needs `sharp`; auto-installs into <SKILL_DIR>/node_modules on first use via
+ * scripts/sharp-loader.js — the same code path svg2png.js uses, so the two can
+ * not drift apart. Set NO_AUTO_INSTALL=1 to disable.
  */
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
-
-const SKILL_DIR = path.join(__dirname, '..');
-
-function envValue(key) {
-  try {
-    const text = fs.readFileSync(path.join(SKILL_DIR, '.env'), 'utf8');
-    const m = text.match(new RegExp('^\\s*' + key + '\\s*=\\s*(.+?)\\s*$', 'm'));
-    return m ? m[1].replace(/^["']|["']$/g, '') : null;
-  } catch (e) {
-    return null;
-  }
-}
-
-function loadSharp() {
-  const extra = envValue('NODE_MODULES');
-  if (extra) module.paths.push(extra);
-  try {
-    return require('sharp');
-  } catch (e) {
-    // not installed yet, fall through
-  }
-  if (process.env.NO_AUTO_INSTALL === '1') {
-    throw new Error('sharp not installed, and auto-install is disabled (NO_AUTO_INSTALL=1)');
-  }
-  console.log('sharp not found, installing into ' + path.join(SKILL_DIR, 'node_modules') + ' (one time) ...');
-  const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-  const npmArgs = ['install', '--no-audit', '--no-fund', '--prefer-offline'];
-  const opts = { cwd: SKILL_DIR, stdio: 'inherit', timeout: 600000 };
-  const r = fs.existsSync(npmCli)
-    ? spawnSync(process.execPath, [npmCli].concat(npmArgs), opts)
-    : spawnSync('npm', npmArgs, Object.assign({}, opts, { shell: true }));
-  if (r.error) throw new Error('npm could not be started (' + r.error.message + ')');
-  if (r.status !== 0) throw new Error('npm install exited with code ' + r.status);
-  return require('sharp');
-}
+const { loadSharp } = require('./sharp-loader');
 
 const args = process.argv.slice(2);
 if (!args.length) {

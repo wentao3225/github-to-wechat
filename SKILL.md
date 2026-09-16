@@ -16,8 +16,10 @@ agent_created: true
 
 ## 依赖
 
-`paths.py`、`md2wechat.py` 与 `gen_cover.py` 只用 Python 标准库，无需安装。
-`svg2png.js` 需要 `sharp`，已设计为首次运行时自动安装到 `<SKILL_DIR>/node_modules`，
+`paths.py`、`md2wechat.py` 与 `gen_cover.py` 只用 Python 标准库，无需安装；
+但 `gen_cover.py` 出图后的裁剪会调用 `fitcover.js`，所以封面这步需要 Node。
+`svg2png.js` 与 `fitcover.js` 需要 `sharp`，已设计为首次运行时自动安装到
+`<SKILL_DIR>/node_modules`（查找与安装逻辑共用 `scripts/sharp-loader.js`），
 装完继续本次转换，无需人工介入，也不用设置 `NODE_PATH`。
 脚本报「找不到模块」时才需要排查依赖：加 `--no-install` 可跳过自动安装，
 或按 `README.md` 手动执行一次 `npm install`。正常的字号告警不是依赖问题。
@@ -66,7 +68,7 @@ cd "$ISSUE"
 本期所有产出都落在这里，`$ISSUE` 就是它的绝对路径。
 
 **开工前确认当前工作区就是你要写入的那个。** 输出位置完全由运行目录决定：
-在 `C:\Users\25626` 打开 agent 跑，产物就落在 `C:\Users\25626\articles`；
+在 `C:\Users\XXXX` 打开 agent 跑，产物就落在 `C:\Users\XXXX\articles`；
 要写进某个项目的仓库，就先在那个工作区里打开 agent。
 用户没有明确要求时，**不要为此弹选择题打断流程**。
 
@@ -134,12 +136,13 @@ cd "$ISSUE"
   图注 18px。**任何文字都不要低于 16px。** 宁可少写几个字、把画布画矮一点，
   也不要为了塞内容而缩字号 —— 低于 16px 在手机上不可读。
   转 PNG 用 1080 宽 + density 288（脚本默认值），公众号压缩到 750 显示，等于超采样。
-  `svg2png.js` 会对 <16px 的字号发出警告，**看到警告就回去改，不要忽略继续出稿**。
+  `svg2png.js` 会对 <16px 的字号发出警告（`font-size="N"` 与 CSS `font-size:Npx`
+  两种写法都查），**看到警告就回去改，不要忽略继续出稿**。
 
 - 每篇 3–5 张正文图（封面另算）。SVG 里所有 `rect` / `text` 必须显式写 `fill`，
   不能依赖 CSS class。
 - **文字垂直居中**：`<text>` 的 `y` 是基线而非中心。要塞进高 `h` 的块中时取
-  `y = 块y + h/2 + 4`（20px 字号用 +7，15px 用 +5）。librsvg 对 `dominant-baseline`
+  `y = 块y + h/2 + 字号×0.35`（20px 字号即 +7）。librsvg 对 `dominant-baseline`
   支持不稳定，直接计算基线更可靠。
 
 ### 4. 写初稿
